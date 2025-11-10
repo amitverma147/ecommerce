@@ -4,9 +4,11 @@ import { IoChevronDown } from "react-icons/io5";
 import { FaRupeeSign, FaSpinner } from "react-icons/fa";
 import AddToCartButton from "@/components/common/AddToCartButton";
 import ProductVariantModal from "@/components/common/ProductVariantModal";
+import BulkOrderModal from "@/components/BulkOrder/BulkOrderModal";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
 import { toast } from "react-toastify";
+import { useBulkModal } from "@/hooks/useBulkModal";
 
 const ProductCard = ({
   product,
@@ -18,12 +20,32 @@ const ProductCard = ({
   const [showVariantModal, setShowVariantModal] = useState(false);
   const [hasVariants, setHasVariants] = useState(false);
   const [buyNowLoading, setBuyNowLoading] = useState(false);
+  const [hasBulkPricing, setHasBulkPricing] = useState(false);
+  const [bulkSettings, setBulkSettings] = useState(null);
   const { currentUser, isAuthenticated } = useAuth();
+  const { isOpen: isBulkModalOpen, selectedProduct, openBulkModal, closeBulkModal } = useBulkModal();
   const router = useRouter();
+  
+  const handleAddToCart = (product) => {
+    const cartItem = {
+      id: product.id,
+      name: product.name,
+      price: Number(product.price),
+      oldPrice: Number(product.oldPrice || product.price * 1.2),
+      image: product.image || "/prod1.png",
+      rating: product.rating || 4.0,
+      reviews: product.reviews || product.review_count || 0,
+      quantity: 1,
+      weight: product.weight || product.uom || "1 Unit",
+    };
+    // Add to cart logic here
+    console.log('Adding to cart:', cartItem);
+  };
 
-  // Fetch variants when component mounts
+  // Fetch variants and bulk settings when component mounts
   useEffect(() => {
     fetchVariants();
+    checkBulkPricing();
   }, [product.id]);
 
   const fetchVariants = async () => {
@@ -38,6 +60,21 @@ const ProductCard = ({
       }
     } catch (error) {
       console.error('Error fetching variants:', error);
+    }
+  };
+
+  const checkBulkPricing = async () => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/bulk-wholesale/${product.id}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.hasBulkPricing) {
+          setHasBulkPricing(true);
+          setBulkSettings(data.bulkSettings);
+        }
+      }
+    } catch (error) {
+      console.error('Error checking bulk pricing:', error);
     }
   };
 
@@ -117,30 +154,40 @@ const ProductCard = ({
   };
   return (
     <div
-      className={`bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm hover:shadow-md hover:scale-105 transition-all duration-200 ${className}`}
+      className={`bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm hover:shadow-md hover:scale-105 transition-all duration-200 group relative ${className}`}
     >
       {/* Product Image */}
-      <div className="relative bg-gradient-to-br from-orange-50 via-yellow-50 to-orange-100 p-2 sm:p-3 flex items-center justify-center h-28 sm:h-32">
+      <div className="relative bg-gradient-to-br from-orange-50 via-yellow-50 to-orange-100 bg-gray-50 ml-1 mt-1 overflow-hidden h-32 sm:h-36 md:h-40 lg:h-44 flex items-center justify-center">
+        {/* Discount Badge - Top Left Corner */}
+        {showDiscount &&
+          product.oldPrice &&
+          product.oldPrice > product.price && (
+            <div className="absolute top-1 left-1 bg-red-600 text-white px-1.5 py-0.5 sm:px-2 sm:py-1 rounded text-xs font-bold leading-tight z-20 shadow-md">
+              <span>-</span>
+              {Math.round(
+                ((product.oldPrice - product.price) / product.oldPrice) * 100
+              )}
+              %
+            </div>
+          )}
+        
         <img
           src={product.image || "/prod1.png"}
           alt={product.name}
-          className="object-contain max-w-full max-h-full w-16 h-16 sm:w-20 sm:h-20"
+          width={300}
+          height={200}
+          className="object-contain w-full h-full p-3 sm:p-4 transition-transform duration-300 group-hover:scale-105"
           onError={(e) => {
             e.target.src = "/prod1.png";
           }}
         />
-        {/* Discount Badge */}
-        {showDiscount &&
-          product.oldPrice &&
-          product.oldPrice > product.price && (
-            <div className="absolute top-1.5 left-1.5 sm:top-2 sm:left-2 bg-green-600 text-white px-1 py-0.5 sm:px-1.5 sm:py-1 rounded text-xs font-bold leading-tight">
-              {Math.round(
-                ((product.oldPrice - product.price) / product.oldPrice) * 100
-              )}
-              %<br />
-              OFF
-            </div>
-          )}
+        
+        {/* Wishlist Heart Icon - Top Right */}
+        <button className="absolute top-1 right-1 w-6 h-6 sm:w-8 sm:h-8 bg-white/90 hover:bg-white rounded-full flex items-center justify-center shadow-sm transition-all duration-200 z-10">
+          <svg className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600 hover:text-red-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 000-6.364 4.5 4.5 0 00-6.364 0L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+          </svg>
+        </button>
 
         {/* Out of Stock Badge */}
         {!product.inStock && (
@@ -153,88 +200,117 @@ const ProductCard = ({
       </div>
 
       {/* Product Info */}
-      <div className="p-1.5 sm:p-2">
-        <div className="text-center mb-1 sm:mb-2">
-          {showBoughtBefore && (
-            <p className="text-xs text-gray-500 mb-1">Bought Before</p>
-          )}
-          {product.weight && (
-            <p className="text-xs sm:text-sm text-gray-600 mb-1">
-              {product.weight}
-            </p>
-          )}
-          <h3 className="font-semibold text-gray-900 text-xs sm:text-sm leading-tight line-clamp-2">
-            {product.name}
-          </h3>
+      <div className="p-3 sm:p-4">
+        {/* Bought Before - Keep at top */}
+        {showBoughtBefore && (
+          <p className="text-xs text-gray-500 mb-2 text-left">Bought Before</p>
+        )}
 
-          {/* Rating (if available) */}
-          {product.rating && (
-            <div className="flex items-center justify-center mt-1">
-              <div className="flex items-center">
-                <span className="text-yellow-400 text-xs">★</span>
-                <span className="text-xs text-gray-600 ml-1">
-                  {product.rating} ({product.reviews || 0})
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
+        {/* Brand Name */}
+        {product.brand && (
+          <div className="mb-2">
+            <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs font-medium">
+              {product.brand}
+            </span>
+          </div>
+        )}
 
-        {/* Price Section */}
+        <h3
+          className="text-sm sm:text-base font-semibold mb-2 line-clamp-2 leading-tight text-gray-900 cursor-pointer"
+          onClick={() => router.push(`/pages/singleproduct/${product.id}`)}
+        >
+          {product.name}
+        </h3>
+
+        {/* Category Badge */}
         <div className="mb-2">
-          <div className="flex items-center justify-between mb-1">
-            <div className="flex flex-col">
-              {product.oldPrice && product.oldPrice > product.price && (
-                <p className="text-xs text-gray-400 line-through">
-                  ₹{product.oldPrice}
-                </p>
-              )}
-              <p className="text-xs text-gray-500">
-                ₹{product.price} + ₹{product.shipping_amount || 0} shipping
-              </p>
-              <p className="text-sm sm:text-base font-bold text-green-600">
-                Total: ₹{(product.price + (product.shipping_amount || 0)).toFixed(2)}
-              </p>
-            </div>
-            <div className="flex items-center gap-1">
-              {hasVariants && (
-                <button
-                  onClick={handleVariantClick}
-                  className="flex items-center gap-1 px-2 py-1 bg-gray-50 hover:bg-gray-100 rounded-md transition-colors border border-gray-200"
-                  title="View pack sizes"
-                >
-                  <span className="text-xs font-medium text-gray-700">Sizes</span>
-                  <IoChevronDown className="w-3 h-3 text-gray-600" />
-                </button>
-              )}
-            </div>
-          </div>
-          
-          {/* Action Buttons */}
-          <div className="flex gap-1">
-            <div className="flex-1">
-              <AddToCartButton
-                product={product}
-                size="small"
-                showCheckoutButton={false}
-              />
-            </div>
-            <button
-              onClick={handleBuyNow}
-              disabled={!product.inStock || buyNowLoading}
-              className="flex-1 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold py-1.5 px-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1"
-            >
-              {buyNowLoading ? (
-                <FaSpinner className="animate-spin text-xs" />
-              ) : (
-                <>
-                  <FaRupeeSign className="text-xs" />
-                  <span>Buy Now</span>
-                </>
-              )}
-            </button>
-          </div>
+          <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs font-medium">
+            {product.category || "Product"}
+          </span>
         </div>
+
+        {/* Weight/Variant Selector */}
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium text-gray-700 bg-gray-50 px-2 py-1 rounded-full">
+            {product.weight || product.uom || "1 Unit"}
+          </span>
+          {hasVariants && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleVariantClick();
+              }}
+              className="p-1 hover:bg-green-50 rounded-full transition-all duration-200"
+            >
+              <IoChevronDown className="w-3 h-3 text-green-600 transition-all duration-300" />
+            </button>
+          )}
+        </div>
+
+        {/* Price - ALWAYS show original product pricing */}
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-sm sm:text-base font-bold text-gray-900">
+            ₹{product.cardPrice || product.originalPrice || product.price}
+          </span>
+          {(product.cardOldPrice || product.originalOldPrice || product.oldPrice) && 
+           (product.cardOldPrice || product.originalOldPrice || product.oldPrice) > (product.cardPrice || product.originalPrice || product.price) && (
+            <span className="text-xs text-gray-400 line-through">
+              ₹{product.cardOldPrice || product.originalOldPrice || product.oldPrice}
+            </span>
+          )}
+        </div>
+
+        {/* Savings Amount - Based on original product pricing */}
+        {(product.cardOldPrice || product.originalOldPrice || product.oldPrice) && 
+         (product.cardOldPrice || product.originalOldPrice || product.oldPrice) > (product.cardPrice || product.originalPrice || product.price) && (
+          <div className="flex items-center gap-1 mb-1">
+            <span className="text-xs text-green-600">You Save:</span>
+            <span className="text-sm font-semibold text-green-600">
+              ₹{Math.round((product.cardOldPrice || product.originalOldPrice || product.oldPrice) - (product.cardPrice || product.originalPrice || product.price))}
+            </span>
+          </div>
+        )}
+
+        {/* Rating */}
+        <div className="flex items-center mb-3">
+          <span className="text-xs sm:text-sm text-gray-500">
+            ⭐ {product.rating || 4.5} ({product.reviews || product.review_count || 0} reviews)
+          </span>
+        </div>
+
+        {/* Bulk Pricing Badge */}
+        {hasBulkPricing && bulkSettings && (
+          <div className="bg-blue-50 border border-blue-200 rounded p-1 mb-2">
+            <div className="text-xs text-blue-700 font-medium text-center">
+              🏪 Bulk Available: {bulkSettings.min_quantity}+ units
+            </div>
+            <div className="text-xs text-blue-600 text-center">
+              Save {bulkSettings.discount_percentage}% • ₹{bulkSettings.bulk_price}/unit
+            </div>
+          </div>
+        )}
+
+        {/* Action Button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            handleAddToCart(product);
+          }}
+          disabled={!product.inStock}
+          className="w-full bg-orange-500 hover:bg-orange-600 disabled:bg-gray-300 text-white text-xs py-2 rounded font-medium transition-colors mb-2"
+        >
+          ADD TO CART
+        </button>
+        {/* Bulk Order Button */}
+        {hasBulkPricing && (
+          <button
+            onClick={() => openBulkModal(product)}
+            className="w-full mt-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1.5 px-2 rounded transition-colors flex items-center justify-center gap-1"
+          >
+            <span>🏪</span>
+            <span>Bulk Order</span>
+          </button>
+        )}
       </div>
       
       {/* Variant Modal */}
@@ -244,6 +320,22 @@ const ProductCard = ({
         product={product}
         variants={variants}
       />
+      
+      {/* Bulk Order Modal */}
+      <BulkOrderModal
+        isOpen={isBulkModalOpen}
+        onClose={closeBulkModal}
+        product={selectedProduct}
+      />
+      
+      <style jsx>{`
+        .line-clamp-2 {
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+      `}</style>
     </div>
   );
 };

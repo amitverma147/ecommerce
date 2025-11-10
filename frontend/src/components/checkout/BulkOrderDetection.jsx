@@ -45,7 +45,8 @@ const BulkOrderDetection = ({ cartItems, onBulkOrderCreate, totalAmount, selecte
         }
       };
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/bulk-orders/order-with-bulk-support`, {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://big-best-backend.vercel.app/api';
+      const response = await fetch(`${apiUrl}/bulk-orders/order-with-bulk-support`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

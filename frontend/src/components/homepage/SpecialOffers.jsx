@@ -1,7 +1,7 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import UniqueVariantCard from "@/components/common/UniqueVariantCard";
+import ProductCard from "@/components/common/ProductCard";
 
 const defaultProducts = [
   {
@@ -155,10 +155,37 @@ const defaultProducts = [
 
 const SpecialOffers = ({ sectionName, sectionDescription, products = [] }) => {
   const [hoveredIdx, setHoveredIdx] = useState(null);
+  const [apiProducts, setApiProducts] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  // Use provided products or fallback to default products
-  const displayProducts =
-    products.length > 0 ? products.slice(0, 5) : defaultProducts.slice(0, 5);
+  useEffect(() => {
+    fetchSpecialOffers();
+  }, []);
+
+  const fetchSpecialOffers = async () => {
+    setLoading(true);
+    try {
+      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/productsroute/quick-picks?filter=top_sale&limit=5`;
+      const response = await fetch(apiUrl);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.products) {
+          setApiProducts(data.products);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching special offers:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const displayProducts = 
+    apiProducts.length > 0 
+      ? apiProducts 
+      : products.length > 0 
+        ? products.slice(0, 5) 
+        : defaultProducts.slice(0, 5);
 
   return (
     <section className="container-responsive py-8 sm:py-12 md:py-16 lg:py-20">
@@ -188,20 +215,25 @@ const SpecialOffers = ({ sectionName, sectionDescription, products = [] }) => {
         >
           {displayProducts.map((product, idx) => (
             <div key={idx} className="w-40 sm:w-64 flex-shrink-0">
-              <UniqueVariantCard
-                product={product}
-                className={`${
-                  hoveredIdx === null
-                    ? idx === 0
-                      ? "md:scale-105 z-10"
-                      : ""
-                    : hoveredIdx === idx
-                    ? "md:scale-105 z-10"
-                    : ""
-                }`}
+              <div
                 onMouseEnter={() => setHoveredIdx(idx)}
                 onMouseLeave={() => setHoveredIdx(null)}
-              />
+              >
+                <ProductCard
+                  product={product}
+                  showDiscount={true}
+                  showBoughtBefore={false}
+                  className={`${
+                    hoveredIdx === null
+                      ? idx === 0
+                        ? "md:scale-105 z-10"
+                        : ""
+                      : hoveredIdx === idx
+                      ? "md:scale-105 z-10"
+                      : ""
+                  }`}
+                />
+              </div>
             </div>
           ))}
         </div>

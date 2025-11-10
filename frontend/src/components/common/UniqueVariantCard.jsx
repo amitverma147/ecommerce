@@ -34,8 +34,27 @@ const UniqueVariantCard = ({ product, className = "" }) => {
       setVariants(product.mockVariants);
       const defaultVariant = product.mockVariants.find(v => v.is_default) || product.mockVariants[0];
       setSelectedVariant(defaultVariant);
+    } else {
+      fetchVariants();
     }
   }, [product.id, product.mockVariants]);
+
+  const fetchVariants = async () => {
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://big-best-backend.vercel.app/api';
+      const response = await fetch(`${apiUrl}/product-variants/product/${product.id}/variants`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.variants && data.variants.length > 0) {
+          setVariants(data.variants);
+          const defaultVariant = data.variants.find(v => v.is_default) || data.variants[0];
+          setSelectedVariant(defaultVariant);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching variants:', error);
+    }
+  };
 
   // Handle click outside to close popup
   useEffect(() => {
@@ -125,28 +144,27 @@ const UniqueVariantCard = ({ product, className = "" }) => {
         )}
 
         {/* Weight Display with Arrow */}
-        {displayData.weight && (
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[8px] sm:text-[9px] text-gray-500">
-              {displayData.weight}
-            </p>
-            {hasVariants && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowVariants(!showVariants);
-                }}
-                className="p-1 hover:bg-gray-100 rounded-full transition-colors"
-              >
-                <IoChevronDown 
-                  className={`w-3 h-3 text-gray-500 transition-transform duration-200 ${
-                    showVariants ? 'rotate-180' : ''
-                  }`} 
-                />
-              </button>
-            )}
-          </div>
-        )}
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[8px] sm:text-[9px] text-gray-500">
+            {displayData.weight || product.uom || '1 kg'}
+          </p>
+          {hasVariants && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowVariants(!showVariants);
+              }}
+              className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+              title="Select variant"
+            >
+              <IoChevronDown 
+                className={`w-3 h-3 text-green-600 transition-transform duration-200 ${
+                  showVariants ? 'rotate-180' : ''
+                }`} 
+              />
+            </button>
+          )}
+        </div>
 
         {/* Price Section */}
         <div className="mb-2">
@@ -242,14 +260,19 @@ const UniqueVariantCard = ({ product, className = "" }) => {
               const variantDiscount = variant.variant_old_price && variant.variant_old_price > variant.variant_price
                 ? Math.round(((variant.variant_old_price - variant.variant_price) / variant.variant_old_price) * 100)
                 : 0;
+              const isSelected = selectedVariant?.id === variant.id;
               
               return (
                 <div
-                  key={idx}
-                  className="flex justify-between items-center border rounded-lg p-1 hover:bg-green-50 transition"
+                  key={variant.id || idx}
+                  className={`flex justify-between items-center border rounded-lg p-1 hover:bg-green-50 transition ${
+                    isSelected ? 'bg-green-50 border-green-200' : ''
+                  }`}
                 >
                   <div>
-                    <p className="text-[8px] sm:text-[9px] font-medium text-gray-500">{variant.variant_weight}</p>
+                    <p className="text-[8px] sm:text-[9px] font-medium text-gray-500">
+                      {variant.variant_weight || variant.variant_name}
+                    </p>
                     <div className="flex items-center gap-1">
                       <span className="text-gray-900 font-bold text-[9px] sm:text-[10px]">₹{variant.variant_price}</span>
                       {variant.variant_old_price && (
@@ -269,7 +292,7 @@ const UniqueVariantCard = ({ product, className = "" }) => {
                     }}
                     className="bg-green-600 text-white text-[7px] px-1 py-0.5 rounded hover:bg-green-700 transition"
                   >
-                    Add
+                    {isSelected ? 'Selected' : 'Add'}
                   </button>
                 </div>
               );

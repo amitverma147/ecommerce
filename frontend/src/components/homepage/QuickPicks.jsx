@@ -400,23 +400,20 @@ const QuickPicks = ({ sectionName, sectionDescription }) => {
                 const selectedVariant = selectedVariants[product.id];
                 const variants = productVariants[product.id] || [];
                 const hasVariants = variants.length > 0;
-                const displayPrice = selectedVariant
-                  ? selectedVariant.variant_price
-                  : product.price;
-                const displayOldPrice = selectedVariant
-                  ? selectedVariant.variant_old_price
-                  : product.old_price;
+                // ALWAYS show original product pricing on card display
+                const displayPrice = product.price;
+                const displayOldPrice = product.old_price;
                 const displayWeight = selectedVariant
                   ? selectedVariant.variant_weight
                   : product.uom || "1 Unit";
                 const inStock = selectedVariant
                   ? selectedVariant.variant_stock > 0
-                  : product.in_stock;
+                  : product.stock > 0;
 
                 return (
                   <div
                     key={product.id || idx}
-                    className="bg-white shadow-md hover:shadow-xl transition-all duration-300 group flex-shrink-0 w-48 sm:w-56 md:w-64 lg:w-72 xl:w-80 transform hover:scale-[1.02] hover:-translate-y-1 relative"
+                    className={`bg-white shadow-md hover:shadow-xl transition-all duration-300 group flex-shrink-0 w-48 sm:w-56 md:w-64 lg:w-72 xl:w-80 transform hover:scale-[1.02] hover:-translate-y-1 relative rounded-lg ${showVariants[product.id] ? 'overflow-visible' : 'overflow-hidden'}`}
                   >
                     {/* Product Image */}
                     <div
@@ -433,17 +430,7 @@ const QuickPicks = ({ sectionName, sectionDescription }) => {
                         className="object-contain w-full h-full p-3 sm:p-4 transition-transform duration-300 group-hover:scale-105"
                         loading="lazy"
                       />
-                      {/* Discount Badge */}
-                      {displayOldPrice && displayOldPrice > displayPrice && (
-                        <div className="absolute top-2 left-2 bg-green-600 text-white px-1.5 py-1 rounded text-xs font-bold">
-                          {Math.round(
-                            ((displayOldPrice - displayPrice) /
-                              displayOldPrice) *
-                              100
-                          )}
-                          % OFF
-                        </div>
-                      )}
+                   
 
                       {/* Out of Stock Overlay */}
                       {!inStock && (
@@ -457,6 +444,16 @@ const QuickPicks = ({ sectionName, sectionDescription }) => {
 
                     {/* Product Info */}
                     <div className="p-3 sm:p-4">
+
+                       {/* Brand Name */}
+                      {product.brand && (
+                        <div className="mb-2">
+                          <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full text-xs font-medium">
+                            {product.brand}
+                          </span>
+                        </div>
+                      )}
+
                       <h3
                         className="text-sm sm:text-base font-semibold mb-2 line-clamp-2 leading-tight text-gray-900 cursor-pointer"
                         onClick={() =>
@@ -495,17 +492,29 @@ const QuickPicks = ({ sectionName, sectionDescription }) => {
                         )}
                       </div>
 
-                      {/* Price */}
-                      <div className="flex items-center gap-2 mb-2">
+                      {/* Price - ALWAYS show original product pricing */}
+                      <div className="flex items-center gap-2 mb-1">
                         <span className="text-sm sm:text-base font-bold text-gray-900">
-                          ₹{displayPrice}
+                          ₹{product.price}
                         </span>
-                        {displayOldPrice && displayOldPrice > displayPrice && (
+                        {product.old_price && product.old_price > product.price && (
                           <span className="text-xs text-gray-400 line-through">
-                            ₹{displayOldPrice}
+                            ₹{product.old_price}
                           </span>
                         )}
                       </div>
+
+                        {/* Savings Amount - Based on original product pricing */}
+                        {product.old_price && product.old_price > product.price && (
+                          <div className="flex flex-col mb-1">
+                            <div className="text-xs text-green-600">
+                              You Save:
+                            </div>
+                            <div className="text-sm font-semibold text-green-600">
+                              ₹{Math.round(product.old_price - product.price)} ({Math.round(((product.old_price - product.price) / product.old_price) * 100)}% Off)
+                            </div>
+                          </div>
+                        )}
 
                       {/* Rating */}
                       <div className="flex items-center mb-3">
@@ -528,70 +537,61 @@ const QuickPicks = ({ sectionName, sectionDescription }) => {
                       </button>
                     </div>
 
-                    {/* Variants Modal */}
+                    {/* Variants Bottom Overlay - Same as New Arrivals */}
                     {showVariants[product.id] && hasVariants && (
-                      <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                        <div className="bg-white rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden shadow-2xl">
-                          <div className="flex justify-between items-center p-4 border-b">
-                            <h3 className="font-semibold text-gray-900">
-                              Choose Pack Size
-                            </h3>
-                            <button
-                              onClick={() => toggleVariants(product.id)}
-                              className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center"
-                            >
-                              ×
-                            </button>
-                          </div>
-                          <div className="p-4 max-h-96 overflow-y-auto">
-                            <div className="space-y-2">
-                              {variants.map((variant) => (
-                                <div
-                                  key={variant.id}
-                                  className={`border rounded-lg p-3 cursor-pointer transition-all ${
-                                    selectedVariant?.id === variant.id
-                                      ? "border-green-500 bg-green-50"
-                                      : "border-gray-200 hover:border-gray-300"
-                                  }`}
-                                  onClick={() =>
-                                    selectVariant(product.id, variant)
-                                  }
-                                >
-                                  <div className="flex items-center justify-between">
-                                    <div>
-                                      <div className="font-medium text-gray-900">
-                                        {variant.variant_weight}
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-lg font-bold text-gray-900">
-                                          ₹{variant.variant_price}
-                                        </span>
-                                        {variant.variant_old_price &&
-                                          variant.variant_old_price >
-                                            variant.variant_price && (
-                                            <span className="text-sm text-gray-400 line-through">
-                                              ₹{variant.variant_old_price}
-                                            </span>
-                                          )}
-                                      </div>
-                                    </div>
-                                    <button
-                                      className={`px-4 py-2 rounded-lg font-medium text-sm ${
-                                        variant.variant_stock === 0
-                                          ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                                          : "bg-green-600 hover:bg-green-700 text-white"
-                                      }`}
-                                      disabled={variant.variant_stock === 0}
-                                    >
-                                      {variant.variant_stock === 0
-                                        ? "Out of Stock"
-                                        : "Select"}
-                                    </button>
+                      <div className="absolute bottom-0 left-0 right-0 bg-white rounded-b-lg shadow-lg border border-gray-100 p-2 overflow-hidden z-50 animate-slide-up">
+                        {/* Header with Close Button */}
+                        <div className="flex justify-between items-center mb-1">
+                          <h3 className="text-gray-800 font-medium text-[9px] sm:text-[10px]">Choose Pack Size</h3>
+                          <button 
+                            onClick={() => toggleVariants(product.id)} 
+                            className="text-gray-500 hover:text-gray-700 p-0.5"
+                          >
+                            <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                        {/* Pack Sizes */}
+                        <div className="space-y-0.5">
+                          {variants.map((variant) => {
+                            const variantDiscount = variant.variant_old_price && variant.variant_old_price > variant.variant_price
+                              ? Math.round(((variant.variant_old_price - variant.variant_price) / variant.variant_old_price) * 100)
+                              : 0;
+                            
+                            return (
+                              <div
+                                key={variant.id}
+                                className="flex justify-between items-center border rounded-lg p-1 hover:bg-green-50 transition"
+                              >
+                                <div>
+                                  <p className="text-[8px] sm:text-[9px] font-medium text-gray-500">{variant.variant_weight}</p>
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-gray-900 font-bold text-[9px] sm:text-[10px]">₹{variant.variant_price}</span>
+                                    {variant.variant_old_price && (
+                                      <span className="text-gray-500 line-through text-[8px] sm:text-[9px]">₹{variant.variant_old_price}</span>
+                                    )}
                                   </div>
+                                  {variantDiscount > 0 && (
+                                    <div className="bg-green-100 text-green-700 text-[7px] sm:text-[8px] font-medium px-0.5 py-0.5 rounded-md inline-block mt-0.5">
+                                      Save ₹{(variant.variant_old_price - variant.variant_price).toFixed(0)}
+                                    </div>
+                                  )}
                                 </div>
-                              ))}
-                            </div>
-                          </div>
+                                <button 
+                                  onClick={() => selectVariant(product.id, variant)}
+                                  disabled={variant.variant_stock === 0}
+                                  className={`text-[7px] px-1 py-0.5 rounded hover:bg-green-700 transition ${
+                                    variant.variant_stock === 0
+                                      ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                                      : "bg-green-600 text-white"
+                                  }`}
+                                >
+                                  {variant.variant_stock === 0 ? "Out of Stock" : "Add"}
+                                </button>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -636,6 +636,13 @@ const QuickPicks = ({ sectionName, sectionDescription }) => {
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
           overflow: hidden;
+        }
+        @keyframes slide-up {
+          from { transform: translateY(100%); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+        .animate-slide-up {
+          animation: slide-up 0.3s ease-out;
         }
       `}</style>
     </section>

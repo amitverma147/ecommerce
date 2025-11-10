@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { ChevronDown, Package, Tag } from 'lucide-react';
 
-const ProductVariantSelector = ({ productId, onVariantSelect, selectedVariant }) => {
+const ProductVariantSelector = ({ productId, onVariantSelect, selectedVariant, onImageChange }) => {
   const [variants, setVariants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
@@ -13,14 +13,17 @@ const ProductVariantSelector = ({ productId, onVariantSelect, selectedVariant })
 
   const fetchVariants = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/variants/product/${productId}`);
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://big-best-backend.vercel.app/api';
+      const response = await fetch(`${apiUrl}/variants/product/${productId}`);
       const data = await response.json();
       
       if (data.success) {
         setVariants(data.data);
-        if (data.data.length > 0 && !selectedVariant) {
-          onVariantSelect(data.data[0]);
-        }
+        // PRICE ISOLATION: Only auto-select first variant if explicitly requested
+        // This prevents automatic override of main product pricing
+        // if (data.data.length > 0 && !selectedVariant) {
+        //   onVariantSelect(data.data[0]); // Commented out to preserve main product pricing
+        // }
       }
     } catch (error) {
       console.error('Error fetching variants:', error);
@@ -42,7 +45,15 @@ const ProductVariantSelector = ({ productId, onVariantSelect, selectedVariant })
   }
 
   const handleVariantSelect = (variant) => {
+    // PRICE ISOLATION: Pass variant data without affecting main product pricing
+    // The variant object contains independent pricing: price, mrp, stock_quantity
     onVariantSelect(variant);
+    
+    // Update image if variant has image and callback provided
+    if (onImageChange && variant.variant_image_url) {
+      onImageChange(variant.variant_image_url);
+    }
+    
     setIsOpen(false);
   };
 
@@ -85,12 +96,21 @@ const ProductVariantSelector = ({ productId, onVariantSelect, selectedVariant })
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-medium">{variant.variant_value}</div>
-                    <div className="text-sm text-gray-600">{variant.variant_name}</div>
-                    {variant.weight && (
-                      <div className="text-xs text-gray-500">Weight: {variant.weight}kg</div>
+                  <div className="flex items-center gap-3">
+                    {variant.variant_image_url && (
+                      <img
+                        src={variant.variant_image_url}
+                        alt={variant.variant_name}
+                        className="w-12 h-12 object-cover rounded-md"
+                      />
                     )}
+                    <div>
+                      <div className="font-medium">{variant.variant_value || variant.variant_name}</div>
+                      <div className="text-sm text-gray-600">{variant.variant_name}</div>
+                      {variant.weight && (
+                        <div className="text-xs text-gray-500">Weight: {variant.weight}kg</div>
+                      )}
+                    </div>
                   </div>
                   <div className="text-right">
                     <div className="font-semibold text-green-600">₹{variant.price}</div>

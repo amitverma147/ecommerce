@@ -222,7 +222,7 @@ function PromoBanner() {
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 xl:px-12 py-6">
       <div
-        className="relative w-full h-[280px] sm:h-[320px] lg:h-[360px] overflow-hidden rounded-2xl bg-white shadow-2xl border border-gray-100"
+        className="relative w-full h-[240px] sm:h-[280px] md:h-[320px] lg:h-[360px] xl:h-[400px] overflow-hidden rounded-2xl bg-white shadow-2xl border border-gray-100"
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
@@ -244,11 +244,13 @@ function PromoBanner() {
                     src={slide.image_url}
                     alt={slide.title || "Promo"}
                     fill
-                    className="object-cover"
+                    className="object-cover object-center"
                     priority={index === 0}
+                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 100vw, 100vw"
+                    quality={90}
                   />
                   {/* subtle dark overlay to ensure text contrast */}
-                  <div className="absolute inset-0 bg-black/35" />
+                  <div className="absolute inset-0 bg-black/40" />
                 </div>
 
                 {/* Optional mesh overlay + glass layer for consistency */}
@@ -337,25 +339,25 @@ function PromoBanner() {
 
                 {/* Title Section */}
                 <div className="space-y-1">
-                  <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-tight">
+                  <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-black text-white leading-tight break-words">
                     {slides[currentSlide].title}
                   </h1>
-                  <p className="text-base sm:text-lg lg:text-xl text-white/90 font-semibold">
+                  <p className="text-sm sm:text-base md:text-lg lg:text-xl text-white/90 font-semibold break-words">
                     {slides[currentSlide].subtitle}
                   </p>
                 </div>
 
                 {/* Discount Display */}
                 <div className="space-y-0.5">
-                  <div className="text-white/80 text-xs font-medium tracking-wider">
+                  <div className="text-white/80 text-xs sm:text-sm font-medium tracking-wider">
                     SAVE UP TO
                   </div>
                   <div
-                    className={`text-4xl sm:text-5xl lg:text-6xl font-black bg-gradient-to-r ${slides[currentSlide].accentColor} bg-clip-text text-transparent`}
+                    className={`text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-black bg-gradient-to-r ${slides[currentSlide].accentColor} bg-clip-text text-transparent break-words`}
                   >
                     {slides[currentSlide].discount}
                   </div>
-                  <div className="text-white/90 text-sm lg:text-base font-semibold">
+                  <div className="text-white/90 text-xs sm:text-sm md:text-base lg:text-lg font-semibold break-words">
                     on {slides[currentSlide].description}
                   </div>
                 </div>

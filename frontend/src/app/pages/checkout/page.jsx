@@ -10,7 +10,12 @@ import { FaRegCircle, FaRegDotCircle } from "react-icons/fa";
 import { FaRupeeSign } from "react-icons/fa";
 import WalletPaymentOption from "@/components/checkout/WalletPaymentOption";
 import RazorpayPayment from "@/components/checkout/RazorpayPayment";
+import CodPaymentOption from "@/components/checkout/CodPaymentOption";
 import { CartContext } from "@/Context/CartContext";
+import {
+  checkProductDelivery,
+  checkCartDeliveryAvailability,
+} from "@/api/deliveryApi";
 
 const initialAddresses = [
   {
@@ -24,13 +29,13 @@ const initialAddresses = [
 const page = () => {
   const searchParams = useSearchParams();
   const { getCartTotal, cartItems } = useContext(CartContext);
-  
+
   // Check if this is a direct purchase
-  const isDirect = searchParams.get('direct') === 'true';
-  const directProductId = searchParams.get('productId');
-  const directQuantity = parseInt(searchParams.get('quantity')) || 1;
-  const directAmount = parseFloat(searchParams.get('amount')) || 0;
-  
+  const isDirect = searchParams.get("direct") === "true";
+  const directProductId = searchParams.get("productId");
+  const directQuantity = parseInt(searchParams.get("quantity")) || 1;
+  const directAmount = parseFloat(searchParams.get("amount")) || 0;
+
   // Address state
   const [addresses, setAddresses] = useState(initialAddresses);
   const [selectedAddressId, setSelectedAddressId] = useState(
@@ -47,28 +52,179 @@ const page = () => {
   const [errors, setErrors] = useState({});
 
   // Payment state
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('');
-  const [orderId] = useState('ORDER_' + Date.now()); // Generate order ID
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("");
+  const [orderId] = useState("ORDER_" + Date.now()); // Generate order ID
+
+  // Delivery validation state
+  const [deliveryValidation, setDeliveryValidation] = useState({
+    isValidating: false,
+    isValid: true,
+    invalidItems: [],
+    validItems: [],
+    error: null,
+  });
+  const [addressPincode, setAddressPincode] = useState("");
 
   // Delivery date (placeholder logic)
   const deliveryStart = "21 may";
   const deliveryEnd = "22 may";
 
   // Calculate pricing based on direct purchase or cart
-  const totalMRP = isDirect ? directAmount : getCartTotal();
-  const codeDiscount = 0;
-  const platformFees = 0;
-  const shippingFees = 0; // Already included in product price
-  const discountOnMRP = 0;
-  const totalAmount = totalMRP;
+  const calculatePricing = () => {
+    if (isDirect) {
+      // For direct purchase, we need to get product details
+      // Note: This should fetch actual product data including shipping
+      return {
+        totalMRP: directAmount,
+        discountOnMRP: 0,
+        shippingCharges: 0, // TODO: Get actual shipping from product data
+        totalAmount: directAmount,
+      };
+    } else {
+      // For cart items
+      const totalMRP = cartItems.reduce((total, item) => {
+        const mrp = item.old_price || item.price;
+        return total + mrp * item.quantity;
+      }, 0);
+
+      const discountOnMRP = cartItems.reduce((total, item) => {
+        const mrp = item.old_price || item.price;
+        const discount = mrp - item.price;
+        return total + discount * item.quantity;
+      }, 0);
+
+      const shippingCharges = cartItems.reduce((total, item) => {
+        return total + (item.shipping_amount || 0) * item.quantity;
+      }, 0);
+
+      const discountedPrice = totalMRP - discountOnMRP;
+      const totalAmount = discountedPrice + shippingCharges;
+
+      return {
+        totalMRP,
+        discountOnMRP,
+        shippingCharges,
+        totalAmount,
+      };
+    }
+  };
+
+  const { totalMRP, discountOnMRP, shippingCharges, totalAmount } =
+    calculatePricing();
+
+  // Extract pincode from address string (assumes Indian format with 6-digit pincode)
+  const extractPincodeFromAddress = (addressString) => {
+    const pincodeMatch = addressString.match(/\b\d{6}\b/);
+    return pincodeMatch ? pincodeMatch[0] : null;
+  };
+
+  // Validate delivery for selected address
+  const validateDeliveryForAddress = async (address) => {
+    const pincode = extractPincodeFromAddress(address.address);
+
+    if (!pincode) {
+      setDeliveryValidation({
+        isValidating: false,
+        isValid: false,
+        error:
+          "Unable to extract pincode from address. Please ensure your address includes a valid 6-digit pincode.",
+        invalidItems: [],
+        validItems: [],
+      });
+      return;
+    }
+
+    setAddressPincode(pincode);
+    setDeliveryValidation((prev) => ({
+      ...prev,
+      isValidating: true,
+      error: null,
+    }));
+
+    try {
+      if (isDirect && directProductId) {
+        // Validate single product for direct purchase
+        const response = await checkProductDelivery(directProductId, pincode);
+
+        setDeliveryValidation({
+          isValidating: false,
+          isValid: response.success && response.data?.is_available,
+          error:
+            response.success && !response.data?.is_available
+              ? `Product not deliverable to ${pincode}`
+              : response.error,
+          invalidItems:
+            response.success && !response.data?.is_available
+              ? [directProductId]
+              : [],
+          validItems:
+            response.success && response.data?.is_available
+              ? [directProductId]
+              : [],
+        });
+      } else {
+        // Validate cart items
+        const cartItemsForValidation = cartItems.map((item) => ({
+          product_id: item.id,
+          quantity: item.quantity,
+        }));
+
+        const response = await checkCartDeliveryAvailability(
+          cartItemsForValidation,
+          0, // latitude - using 0 as placeholder since we're validating by pincode
+          0 // longitude - using 0 as placeholder since we're validating by pincode
+        );
+
+        if (response.success) {
+          setDeliveryValidation({
+            isValidating: false,
+            isValid: response.undeliverableProductIds?.length === 0,
+            error:
+              response.undeliverableProductIds?.length > 0
+                ? `${response.undeliverableProductIds.length} items in your cart are not deliverable to ${pincode}`
+                : null,
+            invalidItems: response.undeliverableProductIds || [],
+            validItems: response.deliverableProductIds || [],
+          });
+        } else {
+          setDeliveryValidation({
+            isValidating: false,
+            isValid: false,
+            error: response.error || "Failed to validate delivery",
+            invalidItems: [],
+            validItems: [],
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Delivery validation error:", error);
+      setDeliveryValidation({
+        isValidating: false,
+        isValid: false,
+        error: "Failed to check delivery availability. Please try again.",
+        invalidItems: [],
+        validItems: [],
+      });
+    }
+  };
+
+  // Validate delivery when selected address changes
+  useEffect(() => {
+    const selectedAddress = addresses.find(
+      (addr) => addr.id === selectedAddressId
+    );
+    if (selectedAddress) {
+      validateDeliveryForAddress(selectedAddress);
+    }
+  }, [selectedAddressId, addresses, cartItems, isDirect, directProductId]);
 
   const handlePaymentSuccess = (paymentData) => {
-    console.log('Payment successful:', paymentData);
+    console.log("Payment successful:", paymentData);
     // Handle successful payment
   };
 
   const handlePaymentError = (error) => {
-    console.error('Payment error:', error);
+    console.error("Payment error:", error);
     // Handle payment error
   };
 
@@ -165,6 +321,67 @@ const page = () => {
       <div className="flex flex-col lg:flex-row gap-8 items-start pt-10">
         {/* LEFT SIDE */}
         <div className="w-full lg:w-[65%] flex flex-col gap-8">
+          {/* Order Items */}
+          {!isDirect && cartItems.length > 0 && (
+            <div className="bg-white rounded-xl p-6 border border-gray-200">
+              <h2 className="text-2xl font-bold mb-4">Order Items</h2>
+              <div className="space-y-4">
+                {cartItems.map((item, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center gap-4 p-4 border border-gray-100 rounded-lg"
+                  >
+                    <img
+                      src={item.image || "/prod1.png"}
+                      alt={item.name}
+                      className="w-16 h-16 object-contain bg-gray-50 rounded"
+                    />
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-gray-900">
+                        {item.name}
+                      </h3>
+                      <div className="text-sm text-gray-600 mt-1">
+                        <div>
+                          MRP: ₹{item.old_price || item.price} × {item.quantity}
+                        </div>
+                        <div>
+                          Price: ₹{item.price} × {item.quantity} = ₹
+                          {(item.price * item.quantity).toFixed(2)}
+                        </div>
+                        <div>
+                          Shipping: ₹{item.shipping_amount || 0} ×{" "}
+                          {item.quantity} = ₹
+                          {(
+                            (item.shipping_amount || 0) * item.quantity
+                          ).toFixed(2)}
+                        </div>
+                        {item.old_price && item.old_price > item.price && (
+                          <div className="text-green-600">
+                            Discount: ₹
+                            {(
+                              (item.old_price - item.price) *
+                              item.quantity
+                            ).toFixed(2)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold text-lg text-gray-900">
+                        ₹
+                        {(
+                          (item.price + (item.shipping_amount || 0)) *
+                          item.quantity
+                        ).toFixed(2)}
+                      </div>
+                      <div className="text-sm text-gray-500">Total</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Delivery Address */}
           <div>
             <h2 className="text-2xl font-bold mb-1">Select Delivery Address</h2>
@@ -175,10 +392,11 @@ const page = () => {
             {addresses.map((addr) => (
               <div
                 key={addr.id}
-                className={`border-2 rounded-3xl px-6 py-5 mb-4 flex flex-col gap-2 relative transition-all ${selectedAddressId === addr.id
+                className={`border-2 rounded-3xl px-6 py-5 mb-4 flex flex-col gap-2 relative transition-all ${
+                  selectedAddressId === addr.id
                     ? "border-[#222] shadow-[0_2px_8px_#0001]"
                     : "border-gray-300"
-                  }`}
+                }`}
                 onClick={() => setSelectedAddressId(addr.id)}
                 style={{ cursor: "pointer" }}
               >
@@ -192,6 +410,45 @@ const page = () => {
                       Mobile:{" "}
                       <span className="text-[#FF7558]">{addr.mobile}</span>
                     </div>
+
+                    {/* Delivery validation status for selected address */}
+                    {selectedAddressId === addr.id && (
+                      <div className="mt-3 p-3 rounded-lg border">
+                        {deliveryValidation.isValidating ? (
+                          <div className="flex items-center gap-2 text-blue-600">
+                            <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                            <span className="text-sm">
+                              Validating delivery availability...
+                            </span>
+                          </div>
+                        ) : deliveryValidation.isValid ? (
+                          <div className="flex items-center gap-2 text-green-600">
+                            <span className="text-lg">✅</span>
+                            <div>
+                              <div className="text-sm font-medium">
+                                Delivery Available
+                              </div>
+                              <div className="text-xs text-gray-600">
+                                All items can be delivered to pincode{" "}
+                                {addressPincode}
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 text-red-600">
+                            <span className="text-lg">❌</span>
+                            <div>
+                              <div className="text-sm font-medium">
+                                Delivery Issue
+                              </div>
+                              <div className="text-xs text-gray-700">
+                                {deliveryValidation.error}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="flex flex-col items-end gap-2">
                     <span className="mt-1">
@@ -237,8 +494,9 @@ const page = () => {
                     type="text"
                     name="label"
                     placeholder="Name (e.g. Home, Office)"
-                    className={`border rounded-lg px-3 py-2 ${errors.label ? "border-red-500" : "border-gray-300"
-                      }`}
+                    className={`border rounded-lg px-3 py-2 ${
+                      errors.label ? "border-red-500" : "border-gray-300"
+                    }`}
                     value={newAddress.label}
                     onChange={handleAddressInputChange}
                   />
@@ -249,8 +507,9 @@ const page = () => {
                     type="text"
                     name="address"
                     placeholder="Full Address"
-                    className={`border rounded-lg px-3 py-2 ${errors.address ? "border-red-500" : "border-gray-300"
-                      }`}
+                    className={`border rounded-lg px-3 py-2 ${
+                      errors.address ? "border-red-500" : "border-gray-300"
+                    }`}
                     value={newAddress.address}
                     onChange={handleAddressInputChange}
                   />
@@ -263,8 +522,9 @@ const page = () => {
                     type="text"
                     name="mobile"
                     placeholder="Mobile Number"
-                    className={`border rounded-lg px-3 py-2 ${errors.mobile ? "border-red-500" : "border-gray-300"
-                      }`}
+                    className={`border rounded-lg px-3 py-2 ${
+                      errors.mobile ? "border-red-500" : "border-gray-300"
+                    }`}
                     value={newAddress.mobile}
                     onChange={handleAddressInputChange}
                   />
@@ -300,8 +560,9 @@ const page = () => {
                     type="text"
                     name="label"
                     placeholder="Name (e.g. Home, Office)"
-                    className={`border rounded-lg px-3 py-2 ${errors.label ? "border-red-500" : "border-gray-300"
-                      }`}
+                    className={`border rounded-lg px-3 py-2 ${
+                      errors.label ? "border-red-500" : "border-gray-300"
+                    }`}
                     value={newAddress.label}
                     onChange={handleAddressInputChange}
                   />
@@ -312,8 +573,9 @@ const page = () => {
                     type="text"
                     name="address"
                     placeholder="Full Address"
-                    className={`border rounded-lg px-3 py-2 ${errors.address ? "border-red-500" : "border-gray-300"
-                      }`}
+                    className={`border rounded-lg px-3 py-2 ${
+                      errors.address ? "border-red-500" : "border-gray-300"
+                    }`}
                     value={newAddress.address}
                     onChange={handleAddressInputChange}
                   />
@@ -326,8 +588,9 @@ const page = () => {
                     type="text"
                     name="mobile"
                     placeholder="Mobile Number"
-                    className={`border rounded-lg px-3 py-2 ${errors.mobile ? "border-red-500" : "border-gray-300"
-                      }`}
+                    className={`border rounded-lg px-3 py-2 ${
+                      errors.mobile ? "border-red-500" : "border-gray-300"
+                    }`}
                     value={newAddress.mobile}
                     onChange={handleAddressInputChange}
                   />
@@ -383,46 +646,106 @@ const page = () => {
                   ""}
               </div>
             </div>
-            
+
             {/* Summary Section */}
             <div className="mb-4">
               <h3 className="text-lg font-semibold mb-3">
-                {isDirect ? 'Direct Purchase' : 'Order Summary'}
+                {isDirect ? "Direct Purchase" : "Order Summary"}
               </h3>
               <div className="flex flex-col gap-2 text-sm">
                 <div className="flex justify-between">
-                  <span>{isDirect ? 'Product Total (incl. shipping)' : 'Total MRP'}</span>
+                  <span>
+                    Total MRP (
+                    {isDirect
+                      ? directQuantity
+                      : cartItems.reduce(
+                          (total, item) => total + item.quantity,
+                          0
+                        )}{" "}
+                    items)
+                  </span>
                   <span>₹{totalMRP.toFixed(2)}</span>
                 </div>
-                {isDirect && (
-                  <div className="flex justify-between text-xs text-gray-300">
-                    <span>Quantity: {directQuantity}</span>
-                    <span>Direct Purchase</span>
+                {discountOnMRP > 0 && (
+                  <div className="flex justify-between">
+                    <span>Discount on MRP</span>
+                    <span className="text-green-400">
+                      - ₹{discountOnMRP.toFixed(2)}
+                    </span>
                   </div>
                 )}
                 <div className="flex justify-between">
-                  <span>Shipping fees</span>
-                  <span className="text-green-400">Included</span>
+                  <span>Product Total</span>
+                  <span>₹{(totalMRP - discountOnMRP).toFixed(2)}</span>
                 </div>
+                <div className="flex justify-between">
+                  <span>Shipping Charges</span>
+                  <span>₹{shippingCharges.toFixed(2)}</span>
+                </div>
+                {isDirect && (
+                  <div className="flex justify-between text-xs text-gray-300">
+                    <span>Direct Purchase</span>
+                    <span>Qty: {directQuantity}</span>
+                  </div>
+                )}
               </div>
               <div className="border-b border-gray-600 my-3"></div>
               <div className="flex justify-between items-center text-xl font-bold">
                 <span>Total Amount</span>
-                <span className="text-[#FF7558]">₹{totalAmount.toFixed(2)}</span>
+                <span className="text-[#FF7558]">
+                  ₹{totalAmount.toFixed(2)}
+                </span>
+              </div>
+              <div className="text-xs text-gray-300 mt-2 text-center">
+                (Product Total + Shipping Charges)
               </div>
             </div>
           </div>
-          
+
           {/* Payment Methods - Separate Card */}
           <div className="mt-4">
-            <h4 className="text-lg font-semibold text-gray-800 mb-4">Choose Payment Method</h4>
-            <div className="space-y-4">
+            <h4 className="text-lg font-semibold text-gray-800 mb-4">
+              Choose Payment Method
+            </h4>
+
+            {/* Delivery validation warning */}
+            {!deliveryValidation.isValid && (
+              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-center gap-2 text-red-800">
+                  <span className="text-lg">⚠️</span>
+                  <div>
+                    <div className="font-semibold">
+                      Cannot proceed with payment
+                    </div>
+                    <div className="text-sm text-red-700 mt-1">
+                      {deliveryValidation.error ||
+                        "Please resolve delivery issues before proceeding."}
+                    </div>
+                    {deliveryValidation.invalidItems.length > 0 && (
+                      <div className="text-xs text-red-600 mt-2">
+                        Items not deliverable:{" "}
+                        {deliveryValidation.invalidItems.join(", ")}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div
+              className={`space-y-4 ${
+                !deliveryValidation.isValid
+                  ? "opacity-50 pointer-events-none"
+                  : ""
+              }`}
+            >
               {/* Wallet Payment Option */}
               <WalletPaymentOption
                 totalAmount={totalAmount}
                 orderId={orderId}
                 onPaymentSuccess={handlePaymentSuccess}
                 onPaymentError={handlePaymentError}
+                disabled={!deliveryValidation.isValid}
               />
 
               {/* Razorpay Payment Option */}
@@ -431,11 +754,28 @@ const page = () => {
                 orderId={orderId}
                 onPaymentSuccess={handlePaymentSuccess}
                 onPaymentError={handlePaymentError}
+                disabled={!deliveryValidation.isValid}
                 customerDetails={{
-                  name: addresses.find(a => a.id === selectedAddressId)?.label || 'Customer',
-                  phone: addresses.find(a => a.id === selectedAddressId)?.mobile || '9999999999',
-                  email: 'customer@bigbestmart.com'
+                  name:
+                    addresses.find((a) => a.id === selectedAddressId)?.label ||
+                    "Customer",
+                  phone:
+                    addresses.find((a) => a.id === selectedAddressId)?.mobile ||
+                    "9999999999",
+                  email: "customer@bigbestmart.com",
                 }}
+              />
+
+              {/* COD Payment Option */}
+              <CodPaymentOption
+                totalAmount={totalAmount}
+                cartItems={cartItems}
+                selectedAddress={addresses.find(
+                  (a) => a.id === selectedAddressId
+                )}
+                onPaymentSuccess={handlePaymentSuccess}
+                onPaymentError={handlePaymentError}
+                disabled={!deliveryValidation.isValid}
               />
             </div>
           </div>

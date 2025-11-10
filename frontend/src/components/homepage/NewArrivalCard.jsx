@@ -20,8 +20,27 @@ const NewArrivalCard = ({
       setVariants(product.mockVariants);
       const defaultVariant = product.mockVariants.find(v => v.is_default) || product.mockVariants[0];
       setSelectedVariant(defaultVariant);
+    } else {
+      fetchVariants();
     }
   }, [product.id, product.mockVariants]);
+
+  const fetchVariants = async () => {
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://big-best-backend.vercel.app/api';
+      const response = await fetch(`${apiUrl}/product-variants/product/${product.id}/variants`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.variants && data.variants.length > 0) {
+          setVariants(data.variants);
+          const defaultVariant = data.variants.find(v => v.is_default) || data.variants[0];
+          setSelectedVariant(defaultVariant);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching variants:', error);
+    }
+  };
 
   const displayData = selectedVariant ? {
     ...product,

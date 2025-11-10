@@ -4,14 +4,15 @@ import { FaInstagram } from "react-icons/fa";
 import { SlSocialFacebook } from "react-icons/sl";
 import { AiOutlineYoutube } from "react-icons/ai";
 import { CiTwitter } from "react-icons/ci";
-
+import { FaTruck } from "react-icons/fa";
 import Image from "next/image";
 import { FaBars, FaTimes } from "react-icons/fa";
 import { FiSearch } from "react-icons/fi";
-
+import { FaRegUser } from "react-icons/fa6";
+import { HiOutlineShoppingBag } from "react-icons/hi2";
 import { RiArrowDropDownLine, RiArrowDropUpLine } from "react-icons/ri";
 import { MdLocationOn } from "react-icons/md";
-
+import { FaChevronDown } from "react-icons/fa";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
@@ -20,6 +21,7 @@ import { useWallet } from "@/contexts/WalletContext";
 import { CartContext } from "@/Context/CartContext";
 import NotificationBell from "@/components/NotificationBell";
 import TrackOrderModal from "@/components/TrackOrderModal";
+import CategoriesSidebar from "@/components/global/CategoriesSidebar";
 
 function Header() {
   const { currentUser, isAuthenticated, logout, userProfile, loading, error } =
@@ -86,6 +88,7 @@ function Header() {
   const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isTrackOrderOpen, setIsTrackOrderOpen] = useState(false);
+  const [isCategoriesSidebarOpen, setIsCategoriesSidebarOpen] = useState(false);
   const [pincode, setPincode] = useState("");
   const [location, setLocation] = useState("Detecting location...");
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
@@ -288,10 +291,7 @@ function Header() {
               <FaBars size={14} />
             </button>
 
-            <Link
-              href="/"
-              className="flex items-center flex-shrink-0 focus:outline-none focus:ring-0"
-            >
+            <Link href="/" className="flex items-center flex-shrink-0">
               <div className="flex flex-col">
                 <div className="text-sm sm:text-base md:text-lg lg:text-xl font-bold text-[#4A90E2]">
                   BIGBESTMART
@@ -411,16 +411,16 @@ function Header() {
                   )}
                 </div>
               ) : (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <Link
                     href="/pages/login"
-                    className="bg-[#FF6B00] rounded-full px-4 py-2 hover:bg-[#e65c00] transition-all shadow-sm text-xs font-semibold text-white flex items-center justify-center min-w-[60px]"
+                    className="px-2.5 py-1.5 text-xs font-semibold text-white bg-[#FF6B00] rounded-md hover:bg-[#e65c00] transition-all shadow-sm"
                   >
                     Login
                   </Link>
                   <Link
                     href="/pages/signup"
-                    className="bg-white border border-[#FF6B00] rounded-full px-4 py-2 hover:bg-[#FF6B00] hover:text-white transition-all shadow-sm text-xs font-semibold text-[#FF6B00] flex items-center justify-center min-w-[65px]"
+                    className="px-2.5 py-1.5 text-xs font-semibold text-[#FF6B00] bg-white border border-[#FF6B00] rounded-md hover:bg-[#FF6B00] hover:text-white transition-all shadow-sm"
                   >
                     Sign Up
                   </Link>
@@ -721,22 +721,14 @@ function Header() {
             <div className="flex items-center gap-1.5 mb-2">
               {/* Search Bar */}
               <div className="flex-1 max-w-[calc(100%-70px)] bg-white h-10 rounded-full border border-[#FD5B00] flex items-center">
-                <div className="p-2 flex-shrink-0">
-                  <Image src="/mic.gif" alt="mic" width={16} height={16} />
-                </div>
                 <input
                   type="text"
                   placeholder="Search..."
-                  className="flex-1 h-full px-2 text-sm min-w-0 outline-none focus:outline-none bg-transparent border-none focus:border-none focus:ring-0"
-                  style={{ outline: "none", border: "none", boxShadow: "none" }}
-                  onFocus={(e) => (e.target.style.outline = "none")}
+                  className="flex-1 h-full px-3 outline-none text-sm min-w-0"
                 />
-                <div className="p-1.5 bg-[#2A2A2A] rounded-full flex-shrink-0 mr-1">
-                  <FiSearch className="text-white" size={14} />
-                </div>
               </div>
-              
-              {/* Track Order   hello world */}
+
+              {/* Track Order */}
               <Link
                 href="/pages/track-order"
                 className="flex items-center gap-1 p-2 bg-gray-50 rounded-lg flex-shrink-0 min-w-[65px] h-10"
@@ -759,61 +751,14 @@ function Header() {
               Home
             </Link>
 
-            <div
-              className="relative flex items-center"
-              ref={categoriesRef}
-              onMouseEnter={() => setIsCategoriesOpen(true)}
-              onMouseLeave={() => setIsCategoriesOpen(false)}
+            <button
+              onClick={() => setIsCategoriesSidebarOpen(true)}
+              className="flex items-center gap-1 text-sm font-semibold text-gray-700 py-2 px-4 bg-gray-100 hover:bg-[#FD5B00] hover:text-white rounded-lg transition-all whitespace-nowrap"
             >
-              <Link
-                href="/pages/categories"
-                className="flex items-center gap-1 text-sm font-semibold text-gray-700 py-2 px-4 bg-gray-100 hover:bg-[#FD5B00] hover:text-white rounded-lg transition-all whitespace-nowrap"
-              >
-                <span className="text-base">📂</span>
-                Categories
-                <RiArrowDropDownLine size={16} />
-              </Link>
-
-              {isCategoriesOpen && (
-                <div className="absolute top-full left-0 mt-2 w-72 lg:w-80 bg-white rounded-lg shadow-lg border z-50">
-                  <div className="p-3 sm:p-4">
-                    <h3 className="font-semibold mb-3 text-gray-800 text-sm sm:text-base">
-                      Categories
-                    </h3>
-                    <div className="grid grid-cols-1 gap-2">
-                      {categories.map((category) => (
-                        <div key={category.id} className="group">
-                          <div className="p-2 hover:bg-gray-50 rounded-lg cursor-pointer">
-                            <h4 className="font-medium text-gray-700 group-hover:text-[#FF6B00] text-sm">
-                              {category.name}
-                            </h4>
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {category.products.map((product, index) => (
-                                <span
-                                  key={index}
-                                  className="text-xs text-gray-500 hover:text-[#FF6B00] cursor-pointer"
-                                >
-                                  {product}
-                                  {index < category.products.length - 1 && ", "}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-3 pt-3 border-t">
-                      <Link
-                        href="/pages/categories"
-                        className="text-sm text-[#FF6B00] hover:underline font-medium"
-                      >
-                        View All Categories →
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+              <span className="text-base">📂</span>
+              Categories
+              <RiArrowDropDownLine size={16} />
+            </button>
             <Link
               href="/pages/business-partner"
               className="text-sm font-semibold text-gray-700 py-2 px-4 bg-gray-100 hover:bg-[#FD5B00] hover:text-white rounded-lg transition-all whitespace-nowrap flex items-center gap-2"
@@ -1370,6 +1315,11 @@ function Header() {
       <TrackOrderModal
         isOpen={isTrackOrderOpen}
         onClose={() => setIsTrackOrderOpen(false)}
+      />
+      
+      <CategoriesSidebar
+        isOpen={isCategoriesSidebarOpen}
+        onClose={() => setIsCategoriesSidebarOpen(false)}
       />
     </div>
   );

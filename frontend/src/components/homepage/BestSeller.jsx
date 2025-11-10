@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import UniqueVariantCard from "@/components/common/UniqueVariantCard";
+import ProductCard from "@/components/common/ProductCard";
 import { productService } from "../../services/productService";
 
 const BestSeller = () => {
@@ -66,20 +66,25 @@ const BestSeller = () => {
                 key={product.id || idx}
                 className="w-40 sm:w-64 flex-shrink-0"
               >
-                <UniqueVariantCard
-                  product={product}
-                  className={`${
-                    hoveredIdx === null
-                      ? idx === 0
-                        ? "md:scale-105 z-10"
-                        : ""
-                      : hoveredIdx === idx
-                      ? "md:scale-105 z-10"
-                      : ""
-                  }`}
+                <div
                   onMouseEnter={() => setHoveredIdx(idx)}
                   onMouseLeave={() => setHoveredIdx(null)}
-                />
+                >
+                  <ProductCard
+                    product={product}
+                    showDiscount={true}
+                    showBoughtBefore={false}
+                    className={`${
+                      hoveredIdx === null
+                        ? idx === 0
+                          ? "md:scale-105 z-10"
+                          : ""
+                        : hoveredIdx === idx
+                        ? "md:scale-105 z-10"
+                        : ""
+                    }`}
+                  />
+                </div>
               </div>
             ))
           )}

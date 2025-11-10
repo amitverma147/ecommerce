@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import ProductCardWithVariants from "../common/ProductCardWithVariants";
+import ProductCard from "../common/ProductCard";
 
 const TopSeller = ({
   sectionName,
@@ -44,7 +44,7 @@ const TopSeller = ({
       <div className="mb-6 sm:mb-8 md:mb-12 lg:mb-16 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
         <div>
           <h2 className="font-extrabold text-xl sm:text-2xl md:text-3xl lg:text-4xl xl:text-6xl text-[#222]">
-            {sectionName || "Top Products"}
+            {sectionName ? sectionName.replace(/s+$/, '') : "Top Product"}
           </h2>
           {sectionDescription && (
             <p className="text-sm sm:text-base text-gray-600 mt-2 leading-relaxed">
@@ -72,18 +72,23 @@ const TopSeller = ({
               ))
             : products.map((product, idx) => (
                 <div key={product.id} className="w-40 sm:w-64 flex-shrink-0">
-                  <ProductCardWithVariants
-                    product={product}
-                    className={
-                      hoveredIdx === null && idx === 0
-                        ? "md:scale-105 z-10"
-                        : hoveredIdx === idx
-                        ? "md:scale-105 z-10"
-                        : ""
-                    }
+                  <div
                     onMouseEnter={() => setHoveredIdx(idx)}
                     onMouseLeave={() => setHoveredIdx(null)}
-                  />
+                  >
+                    <ProductCard
+                      product={product}
+                      showDiscount={true}
+                      showBoughtBefore={false}
+                      className={
+                        hoveredIdx === null && idx === 0
+                          ? "md:scale-105 z-10"
+                          : hoveredIdx === idx
+                          ? "md:scale-105 z-10"
+                          : ""
+                      }
+                    />
+                  </div>
                 </div>
               ))}
         </div>

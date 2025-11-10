@@ -25,7 +25,7 @@ const AddToCartButton = ({
   const isInCart = isItemInCart(itemId);
   // Check stock status (support both inStock and in_stock properties)
   const stockStatus =
-    product.inStock !== undefined ? product.inStock : product.in_stock;
+    product.inStock !== undefined ? product.inStock : product.stock > 0;
 
   // Use variant stock if available, otherwise product stock
   const maxStock = variant ? variant.variant_stock : (
@@ -43,6 +43,7 @@ const AddToCartButton = ({
         variantId: variant?.id,
         name: variant ? `${product.name} (${variant.variant_weight})` : product.name,
         price: variant ? variant.variant_price : product.price,
+        old_price: variant ? variant.variant_old_price : product.old_price,
         shipping_amount: product.shipping_amount || 0,
         image: product.image,
         weight: variant ? variant.variant_weight : product.weight,
@@ -67,19 +68,19 @@ const AddToCartButton = ({
   // Size variants
   const sizeClasses = {
     small: {
-      button: "px-2 py-1 text-xs sm:px-2 sm:py-1",
-      quantityButton: "w-7 h-7 sm:w-6 sm:h-6 text-xs sm:text-xs",
-      quantityText: "text-xs sm:text-xs px-1.5",
+      button: "px-3 py-2 text-xs sm:px-2 sm:py-1 rounded-md",
+      quantityButton: "w-5 h-5 sm:w-6 sm:h-6 text-xs sm:text-xs",
+      quantityText: "text-xs sm:text-xs px-1",
       checkoutButton: "px-2 py-1 text-xs mt-1",
     },
     default: {
-      button: "px-2 sm:px-3 py-1 text-xs sm:text-sm",
-      quantityButton: "w-7 h-7 sm:w-8 sm:h-8 text-sm",
-      quantityText: "text-sm px-2 sm:px-3",
+      button: "px-4 py-2 text-xs sm:px-3 sm:py-1 rounded-md sm:text-sm",
+      quantityButton: "w-5 h-5 sm:w-8 sm:h-8 text-xs sm:text-sm",
+      quantityText: "text-xs sm:text-sm px-1 sm:px-2",
       checkoutButton: "px-3 py-1.5 text-xs sm:text-sm mt-2",
     },
     large: {
-      button: "px-4 py-2 text-sm",
+      button: "px-4 py-2 text-sm rounded-md",
       quantityButton: "w-8 h-8 text-sm",
       quantityText: "text-sm px-3",
       checkoutButton: "px-4 py-2 text-sm mt-2",
@@ -110,7 +111,7 @@ const AddToCartButton = ({
     return (
       <button
         onClick={handleAddToCart}
-        className={`bg-white border-2 border-[#FF7558] text-[#FF7558] rounded font-semibold hover:bg-[#FF7558] hover:text-white transition-colors ${currentSize.button} ${className}`}
+        className={`bg-white border-2 border-[#FF7558] text-[#FF7558] font-semibold hover:bg-[#FF7558] hover:text-white transition-colors ${currentSize.button} ${className}`}
       >
         Add to Cart
       </button>

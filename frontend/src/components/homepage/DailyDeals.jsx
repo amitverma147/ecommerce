@@ -209,7 +209,7 @@ const DailyDeals = ({ sectionName, sectionDescription }) => {
               Array.from({ length: 6 }).map((_, idx) => (
                 <div
                   key={idx}
-                  className="bg-white rounded-xl shadow-md flex-shrink-0 w-40 sm:w-48 md:w-56 lg:w-64 h-auto min-h-[280px] sm:min-h-[320px] md:min-h-[360px] lg:min-h-[400px] animate-pulse"
+                  className="bg-white rounded-xl shadow-md flex-shrink-0 w-40 sm:w-48 md:w-56 lg:w-64 h-auto min-h-[200px] sm:min-h-[220px] md:min-h-[240px] lg:min-h-[260px] animate-pulse"
                 >
                   <div className="h-32 sm:h-36 md:h-40 lg:h-44 bg-gray-200 rounded-t-xl"></div>
                   <div className="p-3 sm:p-4">
@@ -250,30 +250,22 @@ const DailyDeals = ({ sectionName, sectionDescription }) => {
               deals.map((deal, idx) => (
                 <div
                   key={deal.id || idx}
-                  className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 cursor-pointer group flex-shrink-0 transform hover:scale-[1.02] hover:-translate-y-1 w-40 sm:w-48 md:w-56 lg:w-64 h-auto min-h-[280px] sm:min-h-[320px] md:min-h-[360px] lg:min-h-[400px]"
+                  className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 cursor-pointer group flex-shrink-0 transform hover:scale-[1.02] hover:-translate-y-1 w-40 sm:w-48 md:w-56 lg:w-64 h-auto min-h-[200px] sm:min-h-[220px] md:min-h-[240px] lg:min-h-[260px]"
                   onClick={() => router.push(`/daily-deals/${deal.id}`)}
                 >
-                  {/* Badge */}
                   <div className="relative">
-                    <div className="absolute top-2 left-2 z-10 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full shadow-md">
-                      {deal.badge || "DEAL"}
-                    </div>
-
                     {/* Product Image Container */}
                     <div className="h-32 sm:h-36 md:h-40 lg:h-44 bg-gradient-to-br from-orange-100 to-orange-200 rounded-t-xl overflow-hidden relative">
                       <Image
-                        src={
-                          deal.image_url ||
-                          "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQwIiBoZWlnaHQ9IjE3NiIgdmlld0JveD0iMCAwIDI0MCAxNzYiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyNDAiIGhlaWdodD0iMTc2IiBmaWxsPSIjZjNlNGVkIi8+Cjx0ZXh0IHg9IjEyMCIgeT0iODgiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk3OTdhNyIgdGV4dC1hbmNob3I9Im1pZGRsZSI+UHJvZHVjdCBJbWFnZTwvdGV4dD4KPC9zdmc+"
-                        }
+                        src={deal.image_url || ""}
                         alt={deal.title}
-                        width={240}
-                        height={176}
-                        className="object-contain w-full h-full p-3 sm:p-4 transition-transform duration-300 group-hover:scale-105"
+                        fill
+                        sizes="(max-width: 640px) 160px, (max-width: 768px) 192px, (max-width: 1024px) 224px, 256px"
+                        className="object-cover object-center p-2 sm:p-3 transition-transform duration-300 group-hover:scale-105"
                         loading="lazy"
+                        quality={85}
                         onError={(e) => {
-                          e.target.src =
-                            "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQwIiBoZWlnaHQ9IjE3NiIgdmlld0JveD0iMCAwIDI0MCAxNzYiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyNDAiIGhlaWdodD0iMTc2IiBmaWxsPSIjZjNlNGVkIi8+Cjx0ZXh0IHg9IjEyMCIgeT0iODgiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk3OTdhNyIgdGV4dC1hbmNob3I9Im1pZGRsZSI+UHJvZHVjdCBJbWFnZTwvdGV4dD4KPC9zdmc+";
+                          e.target.src = "";
                         }}
                       />
 
@@ -299,48 +291,7 @@ const DailyDeals = ({ sectionName, sectionDescription }) => {
                     <div className="flex text-yellow-400 mb-2">
                       {"★".repeat(5)}
                     </div>
-
-                    {/* Mapped Products */}
-                    {dealProducts[deal.id] &&
-                    dealProducts[deal.id].length > 0 ? (
-                      <div className="mb-2">
-                        <div className="text-xs text-gray-500 mb-1 flex items-center justify-between">
-                          <span>Featured Products:</span>
-                          <span className="bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded text-xs font-medium">
-                            {dealProducts[deal.id].length}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {dealProducts[deal.id]
-                            .slice(0, 3)
-                            .map((item, productIdx) => (
-                              <div
-                                key={item.product_id || productIdx}
-                                className="bg-orange-50 text-orange-700 text-xs px-2 py-1 rounded-full truncate max-w-full border border-orange-200"
-                                title={
-                                  item.products?.name ||
-                                  `Product ${item.product_id}`
-                                }
-                              >
-                                {item.products?.name ||
-                                  `Product ${item.product_id}`}
-                              </div>
-                            ))}
-                          {dealProducts[deal.id].length > 3 && (
-                            <div className="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full border border-gray-200">
-                              +{dealProducts[deal.id].length - 3} more
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="mb-2">
-                        <div className="text-xs text-gray-400 italic">
-                          No products mapped yet
-                        </div>
-                      </div>
-                    )}
-
+                  
                     {/* Mobile touch indicator */}
                     <div className="w-6 h-1 bg-orange-400 rounded-full mx-auto mt-2 opacity-0 sm:hidden group-active:opacity-100 transition-opacity duration-200"></div>
                   </div>

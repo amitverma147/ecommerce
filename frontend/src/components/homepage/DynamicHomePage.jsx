@@ -202,7 +202,7 @@ export default function DynamicHomepage() {
         {
           id: 5,
           section_key: "top_products",
-          section_name: "Top Products",
+          section_name: "Top Product",
           component_name: "TopProducts",
           is_active: true,
           display_order: 5,

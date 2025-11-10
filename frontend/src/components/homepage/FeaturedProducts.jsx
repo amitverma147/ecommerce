@@ -1,7 +1,7 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import UniqueVariantCard from "@/components/common/UniqueVariantCard";
+import ProductCard from "@/components/common/ProductCard";
 
 const defaultProducts = [
   {
@@ -159,10 +159,46 @@ const FeaturedProducts = ({
   products = [],
 }) => {
   const [hoveredIdx, setHoveredIdx] = useState(null);
+  const [apiProducts, setApiProducts] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  // Use provided products or fallback to default products
-  const displayProducts =
-    products.length > 0 ? products.slice(0, 5) : defaultProducts.slice(0, 5);
+  // Always fetch featured products from API to get real DB data
+  useEffect(() => {
+    fetchFeaturedProducts();
+  }, []);
+
+  const fetchFeaturedProducts = async () => {
+    setLoading(true);
+    try {
+      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/productsroute/featured`;
+      console.log('Fetching featured products from:', apiUrl);
+      const response = await fetch(apiUrl);
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Featured products response:', data);
+        if (data.success && data.products) {
+          setApiProducts(data.products.slice(0, 5));
+          console.log('Featured products loaded:', data.products.length);
+        } else {
+          console.log('No featured products found, using fallback');
+        }
+      } else {
+        console.log('Featured products API failed, status:', response.status);
+      }
+    } catch (error) {
+      console.error('Error fetching featured products:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Prioritize real API products over mock data
+  const displayProducts = 
+    apiProducts.length > 0 
+      ? apiProducts 
+      : products.length > 0 
+        ? products.slice(0, 5) 
+        : defaultProducts.slice(0, 5);
 
   return (
     <section className="container-responsive py-8 sm:py-12 md:py-16 lg:py-20">
@@ -190,24 +226,38 @@ const FeaturedProducts = ({
           className="flex gap-2 sm:gap-4 pb-4"
           style={{ width: "max-content" }}
         >
-          {displayProducts.map((product, idx) => (
-            <div key={idx} className="w-40 sm:w-64 flex-shrink-0">
-              <UniqueVariantCard
-                product={product}
-                className={`${
-                  hoveredIdx === null
-                    ? idx === 0
-                      ? "md:scale-105 z-10"
-                      : ""
-                    : hoveredIdx === idx
-                    ? "md:scale-105 z-10"
-                    : ""
-                }`}
-                onMouseEnter={() => setHoveredIdx(idx)}
-                onMouseLeave={() => setHoveredIdx(null)}
-              />
-            </div>
-          ))}
+          {loading ? (
+            // Loading skeleton
+            Array.from({ length: 5 }, (_, idx) => (
+              <div key={idx} className="w-40 sm:w-64 flex-shrink-0">
+                <div className="bg-gray-200 animate-pulse rounded-xl h-64"></div>
+              </div>
+            ))
+          ) : (
+            displayProducts.map((product, idx) => (
+              <div key={product.id || idx} className="w-40 sm:w-64 flex-shrink-0">
+                <div
+                  onMouseEnter={() => setHoveredIdx(idx)}
+                  onMouseLeave={() => setHoveredIdx(null)}
+                >
+                  <ProductCard
+                    product={product}
+                    showDiscount={true}
+                    showBoughtBefore={false}
+                    className={`${
+                      hoveredIdx === null
+                        ? idx === 0
+                          ? "md:scale-105 z-10"
+                          : ""
+                        : hoveredIdx === idx
+                        ? "md:scale-105 z-10"
+                        : ""
+                    }`}
+                  />
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </section>

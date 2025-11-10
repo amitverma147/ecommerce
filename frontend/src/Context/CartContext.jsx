@@ -125,7 +125,7 @@ export const CartProvider = ({ children }) => {
     return cartItems.reduce(
       (total, item) => {
         const basePrice = item.isBulkOrder ? item.bulkPrice || item.price : item.price;
-        const shippingAmount = item.shipping_amount || 0;
+        const shippingAmount = parseFloat(item.shipping_amount) || 0;
         const itemTotal = (basePrice + shippingAmount) * item.quantity;
         return total + itemTotal;
       },

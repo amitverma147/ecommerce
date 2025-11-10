@@ -19,11 +19,16 @@ const BigBasketStyleProductCard = ({ product, className = "" }) => {
   const displayData = selectedVariant ? {
     ...product,
     price: selectedVariant.variant_price,
-    oldPrice: selectedVariant.variant_old_price,
+    old_price: selectedVariant.variant_old_price,
+    shipping_amount: product.shipping_amount || 0,
     weight: selectedVariant.variant_weight,
     stock: selectedVariant.variant_stock,
     inStock: selectedVariant.variant_stock > 0,
-  } : product;
+  } : {
+    ...product,
+    old_price: product.oldPrice || product.old_price,
+    shipping_amount: product.shipping_amount || 0
+  };
 
   const hasVariants = variants.length > 0;
   const discountPercent = displayData.oldPrice && displayData.oldPrice > displayData.price

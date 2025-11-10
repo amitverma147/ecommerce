@@ -170,7 +170,7 @@ function OldCategoriesPage() {
           onSale: product.discount > 0,
           deliveryDate: "May 15, 2023",
           deliveryType: "Free Delivery",
-          in_stock: product.in_stock !== false,
+          in_stock: product.stock > 0 !== false,
           images: product.images || [],
         }));
 

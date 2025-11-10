@@ -32,8 +32,8 @@ const ProductCardWithVariants = ({
   const fetchVariants = async () => {
     setLoading(true);
     try {
-      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/product-variants/product/${product.id}/variants`;
-      const response = await fetch(apiUrl);
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://big-best-backend.vercel.app/api';
+      const response = await fetch(`${apiUrl}/product-variants/product/${product.id}/variants`);
 
       if (response.ok) {
         const data = await response.json();
@@ -63,17 +63,25 @@ const ProductCardWithVariants = ({
     setShowVariants(!showVariants);
   };
 
-  // Use selected variant data or fallback to product data
-  const displayData = selectedVariant
-    ? {
-        ...product,
-        price: selectedVariant.variant_price,
-        oldPrice: selectedVariant.variant_old_price,
-        weight: selectedVariant.variant_weight,
-        stock: selectedVariant.variant_stock,
-        inStock: selectedVariant.variant_stock > 0,
-      }
-    : product;
+  // PRICE ISOLATION: Always preserve main product pricing
+  // DEFAULT: Show main product pricing from database
+  // VARIANT: Show variant pricing only when variant is explicitly selected
+  const displayData = {
+    ...product,
+    // Always preserve original product data
+    originalPrice: product.price,
+    originalOldPrice: product.old_price,
+    originalDiscount: product.discount,
+    // Use variant pricing only when variant is selected, otherwise main product pricing
+    price: selectedVariant ? selectedVariant.variant_price : product.price,
+    old_price: selectedVariant ? selectedVariant.variant_old_price : product.old_price,
+    discount: selectedVariant ? selectedVariant.variant_discount : product.discount,
+    // Other variant-specific data
+    weight: selectedVariant ? selectedVariant.variant_weight : (product.uom || product.weight),
+    stock: selectedVariant ? selectedVariant.variant_stock : product.stock,
+    inStock: selectedVariant ? (selectedVariant.variant_stock > 0) : (product.stock > 0 || product.stock > 0),
+    shipping_amount: product.shipping_amount || 0
+  };
 
   const hasVariants = variants.length > 0;
 
@@ -130,14 +138,13 @@ const ProductCardWithVariants = ({
           {/* Weight with Dropdown Arrow - Enhanced Style */}
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-gray-700 bg-gray-50 px-2 py-1 rounded-full">
-              {selectedVariant
-                ? selectedVariant.variant_weight
-                : displayData.weight || "1 kg"}
+              {selectedVariant ? selectedVariant.variant_weight : (displayData.weight || product.uom || "1 kg")}
             </span>
             {hasVariants && (
               <button
                 onClick={toggleVariants}
                 className="p-1 hover:bg-green-50 rounded-full transition-all duration-200 hover:scale-110"
+                title="Select variant"
               >
                 <IoChevronDown
                   className={`w-3 h-3 text-green-600 transition-all duration-300 ${
@@ -161,17 +168,32 @@ const ProductCardWithVariants = ({
           )}
         </div>
 
-        {/* Price Section */}
+        {/* Price Section - MAIN PRODUCT PRICING BY DEFAULT */}
         <div className="flex items-center justify-between mb-1">
           <div className="flex flex-col">
-            {displayData.oldPrice &&
-              displayData.oldPrice > displayData.price && (
-                <p className="text-xs text-gray-400 line-through">
-                  ₹{displayData.oldPrice}
-                </p>
-              )}
+            {/* Show old price if available */}
+            {displayData.old_price && displayData.old_price > displayData.price && (
+              <p className="text-xs text-gray-400 line-through">
+                ₹{displayData.old_price}
+              </p>
+            )}
+            {/* Show current price - main product by default, variant when selected */}
             <p className="text-sm sm:text-base font-bold text-gray-900">
               ₹{displayData.price}
+            </p>
+            {/* Show pricing source indicator and shipping */}
+            {selectedVariant ? (
+              <p className="text-xs text-blue-600 font-medium">
+                Variant Price
+              </p>
+            ) : (
+              <p className="text-xs text-gray-500 font-medium">
+                Product Price
+              </p>
+            )}
+            {/* Show shipping info */}
+            <p className="text-xs text-green-600 font-medium">
+              {displayData.shipping_amount > 0 ? `+ ₹${displayData.shipping_amount} shipping` : 'FREE shipping'}
             </p>
           </div>
           <div className="flex-shrink-0">
@@ -202,8 +224,7 @@ const ProductCardWithVariants = ({
                     <h3 className="font-semibold text-gray-900 text-sm">
                       {product.name}
                     </h3>
-                    <p className="text-xs text-gray-500 flex items-center gap-1">
-                      <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                    <p className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
                       {product.brand || "BigandBest"}
                     </p>
                   </div>

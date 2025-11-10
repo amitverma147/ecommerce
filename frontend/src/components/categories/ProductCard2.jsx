@@ -25,7 +25,7 @@ const ProductCard2 = ({
   const rating = product.review_stars || product.rating || 4.0;
   const reviews =
     product.no_of_reviews || product.reviews || product.review_count || 0;
-  const inStock = product.in_stock !== false;
+  const inStock = product.stock > 0 !== false;
 
   // Calculate discount percentage
   const discountPercentage =
@@ -62,7 +62,8 @@ const ProductCard2 = ({
     id: product.id || product._id || Math.random().toString(36).substr(2, 9),
     name: productName,
     price: Number(productPrice),
-    oldPrice: Number(oldPrice),
+    old_price: Number(oldPrice),
+    shipping_amount: Number(product.shipping_amount) || 0,
     image: productImage,
     rating: rating,
     reviews: reviews,

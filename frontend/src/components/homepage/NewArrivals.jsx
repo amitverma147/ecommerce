@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import UniqueVariantCard from "../common/UniqueVariantCard";
+import ProductCard from "../common/ProductCard";
 import { productService } from "../../services/productService";
 
 const NewArrivals = () => {
@@ -87,8 +87,10 @@ const NewArrivals = () => {
                         NEW
                       </div>
                     )}
-                    <UniqueVariantCard
+                    <ProductCard
                       product={product}
+                      showDiscount={true}
+                      showBoughtBefore={false}
                       className={`transform transition-all duration-300 hover:scale-105 hover:shadow-2xl ${
                         hoveredIdx === idx
                           ? "scale-105 shadow-2xl"

@@ -30,7 +30,8 @@ const BulkOrderForm = () => {
     setLoading(true);
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/bulk-orders/enquiry`, {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://big-best-backend.vercel.app/api';
+      const response = await fetch(`${apiUrl}/bulk-orders/enquiry`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

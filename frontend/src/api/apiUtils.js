@@ -1,6 +1,12 @@
 // Common API utility functions
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "https://big-best-backend.vercel.app/api";
+const RAW_API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "https://big-best-backend.vercel.app/api";
+
+const API_BASE_URL = RAW_API_BASE.endsWith("/api")
+  ? RAW_API_BASE
+  : RAW_API_BASE.replace(/\/+$/, "") + "/api";
 
 /**
  * Safe fetch wrapper that handles JSON parsing errors

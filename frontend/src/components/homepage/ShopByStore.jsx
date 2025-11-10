@@ -177,14 +177,15 @@ const ShopByStore = ({ sectionName, sectionDescription }) => {
             >
               {/* Circular Image Container */}
               <div className="relative mb-3 sm:mb-4">
-                <div className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 lg:w-28 lg:h-28  overflow-hidden  transition-all duration-300 ">
+                <div className="relative w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 lg:w-28 lg:h-28 overflow-hidden rounded-full bg-white shadow-md transition-all duration-300 group-hover:shadow-lg">
                   <Image
                     src={item.image_url || "/prod1.png"}
                     alt={item.title || item.name || "Store image"}
-                    width={112}
-                    height={112}
-                    className="w-full h-full object-contain p-2 sm:p-3 transition-transform duration-300 group-hover:scale-110"
+                    fill
+                    sizes="(max-width: 640px) 64px, (max-width: 768px) 80px, (max-width: 1024px) 96px, 112px"
+                    className="object-cover object-center p-2 sm:p-3 transition-transform duration-300 group-hover:scale-110"
                     loading="lazy"
+                    quality={85}
                     onError={(e) => {
                       e.target.src = "/prod1.png";
                     }}
@@ -193,10 +194,15 @@ const ShopByStore = ({ sectionName, sectionDescription }) => {
               </div>
 
               {/* Text Content */}
-              <div className="px-1 mt-2">
+              <div className="px-1 ">
                 <h3 className="text-xs sm:text-base md:text-lg font-semibold text-gray-900 mb-0.5 group-hover:text-orange-600 transition-colors duration-300 leading-tight truncate">
                   {item.name}
                 </h3>
+                {item.description && (
+                  <p className="text-xs sm:text-sm text-gray-600 leading-tight line-clamp-2">
+                    {item.description}
+                  </p>
+                )}
               </div>
 
               {/* Mobile Touch Indicator */}

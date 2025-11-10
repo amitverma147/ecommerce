@@ -18,16 +18,7 @@ const NotificationBell = ({ userId }) => {
     }
   }, [userId]);
 
-  // Prevent multiple calls by debouncing
-  useEffect(() => {
-    let timeoutId;
-    if (userId) {
-      timeoutId = setTimeout(() => {
-        fetchUnreadCount();
-      }, 1000);
-    }
-    return () => clearTimeout(timeoutId);
-  }, []);
+
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -41,32 +32,32 @@ const NotificationBell = ({ userId }) => {
   }, []);
 
   const fetchUnreadCount = async () => {
+    if (!userId) return;
+    
     try {
       const result = await notificationService.getUnreadCount(userId);
       if (result.success) {
         setUnreadCount(result.unread_count || 0);
       } else {
-        console.warn("Failed to fetch unread count:", result.error);
         setUnreadCount(0);
       }
     } catch (error) {
-      console.warn("Error in fetchUnreadCount:", error);
       setUnreadCount(0);
     }
   };
 
   const fetchNotifications = async () => {
+    if (!userId) return;
+    
     setLoading(true);
     try {
       const result = await notificationService.getUserNotifications(userId, 10);
       if (result.success) {
         setNotifications(result.notifications || []);
       } else {
-        console.warn("Failed to fetch notifications:", result.error);
         setNotifications([]);
       }
     } catch (error) {
-      console.error("Error in fetchNotifications:", error);
       setNotifications([]);
     }
     setLoading(false);

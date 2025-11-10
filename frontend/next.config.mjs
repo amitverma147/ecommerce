@@ -17,8 +17,8 @@ const nextConfig = {
       "i.postimg.cc",
       "vjveipltkwxnndrencbf.supabase.co",
       "vrrcgzafznjbdzpvciui.supabase.co",
-      "res.cloudinary.com", // For Cloudinary profile images
-      "images.unsplash.com", // For Unsplash images
+      "res.cloudinary.com",
+      "images.unsplash.com",
     ],
     remotePatterns: [
       {
@@ -34,6 +34,12 @@ const nextConfig = {
         pathname: '/storage/v1/object/public/**',
       },
     ],
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
+    formats: ['image/webp', 'image/avif'],
+    minimumCacheTTL: 60,
+    dangerouslyAllowSVG: true,
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
 
   // Enhanced optimization for Vercel deployment

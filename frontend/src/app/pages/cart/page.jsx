@@ -66,7 +66,7 @@ const page = () => {
                       <div className="w-14 h-14 flex items-center justify-center bg-gray-50 rounded">
                         <Image
                           src={item.image || "/prod1.png"}
-                          alt={item.name}
+                          alt={item.name || "Product image"}
                           width={56}
                           height={56}
                           className="w-12 h-12 object-contain"
@@ -75,9 +75,26 @@ const page = () => {
                       <div>
                         <div className="font-semibold text-base">
                           {item.name}
+                          {item.isBulkOrder && (
+                            <span className="ml-2 bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
+                              🏪 Bulk Order
+                            </span>
+                          )}
                         </div>
                         <div className="text-sm text-gray-500">
-                          {item.weight && `${item.weight} • `}Price: ₹{item.price} + Shipping: ₹{item.shipping_amount || 0}
+                          {item.weight && `${item.weight} • `}
+                          {item.isBulkOrder && item.bulkRange && (
+                            <div className="text-blue-600">Bulk Range: {item.bulkRange}</div>
+                          )}
+                          <div>MRP: ₹{item.old_price || item.price}</div>
+                          <div>Price: ₹{item.price}</div>
+                          <div className="text-blue-600">Shipping: {item.shipping_amount > 0 ? `₹${item.shipping_amount}` : 'FREE'}</div>
+                          {item.old_price && item.old_price > item.price && (
+                            <div className="text-green-600">You save: ₹{(item.old_price - item.price).toFixed(2)} per unit</div>
+                          )}
+                          {item.isBulkOrder && item.discountPercentage && (
+                            <div className="text-blue-600">Bulk Discount: {item.discountPercentage}%</div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -169,32 +186,33 @@ const page = () => {
             <div className="border-b-2 border-gray-200 mb-1"></div>
             <div className="flex flex-col gap-2 text-sm">
               <div className="flex justify-between">
-                <span>Total MRP</span>
+                <span>Total MRP ({cartItems.reduce((total, item) => total + item.quantity, 0)} items)</span>
                 <span>₹{cartItems.reduce((total, item) => total + ((item.old_price || item.price) * item.quantity), 0).toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
                 <span>Discount on MRP</span>
-                <span className="text-[#FF7558]">- ₹{cartItems.reduce((total, item) => total + (((item.old_price || item.price) - item.price) * item.quantity), 0).toFixed(2)}</span>
+                <span className="text-green-500">- ₹{cartItems.reduce((total, item) => total + (((item.old_price || item.price) - item.price) * item.quantity), 0).toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
-                <span>Code Discount</span>
-                <span className="text-[#FF7558]">- ₹0.00</span>
+                <span>Product Total</span>
+                <span>₹{cartItems.reduce((total, item) => total + (item.price * item.quantity), 0).toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
                 <span>Shipping Charges</span>
-                <span>₹{cartItems.reduce((total, item) => total + ((item.shipping_amount || 0) * item.quantity), 0).toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>GST (18%)</span>
-                <span>₹{(getCartTotal() * 0.18).toFixed(2)}</span>
+                <span className={cartItems.reduce((total, item) => total + ((item.shipping_amount || 0) * item.quantity), 0) === 0 ? 'text-green-500' : ''}>
+                  {cartItems.reduce((total, item) => total + ((item.shipping_amount || 0) * item.quantity), 0) === 0 ? 'FREE' : `₹${cartItems.reduce((total, item) => total + ((item.shipping_amount || 0) * item.quantity), 0).toFixed(2)}`}
+                </span>
               </div>
             </div>
             <div className="border-b-2 border-gray-200 my-1"></div>
             <div className="flex justify-between items-center text-lg font-semibold">
               <span>Total Amount</span>
               <span>
-                ₹{(getCartTotal() + cartItems.reduce((total, item) => total + ((item.shipping_amount || 0) * item.quantity), 0) + (getCartTotal() * 0.18)).toFixed(2)}
+                ₹{getCartTotal().toFixed(2)}
               </span>
+            </div>
+            <div className="text-xs text-gray-300 mt-1 text-center">
+              (Product Total + Shipping Charges)
             </div>
             <Link
               href={"/pages/checkout"}

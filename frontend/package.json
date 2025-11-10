@@ -17,6 +17,7 @@
     "@heroicons/react": "^2.2.0",
     "@supabase/supabase-js": "^2.75.0",
     "axios": "^1.10.0",
+    "lucide-react": "^0.552.0",
     "next": "^15.3.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

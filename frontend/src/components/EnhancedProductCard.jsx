@@ -7,6 +7,7 @@ const EnhancedProductCard = ({ product, onAddToCart, cartQuantity = 0 }) => {
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [quantity, setQuantity] = useState(cartQuantity);
   const [showVariants, setShowVariants] = useState(false);
+  const [currentImage, setCurrentImage] = useState(product.image_url);
 
   useEffect(() => {
     setQuantity(cartQuantity);
@@ -14,6 +15,10 @@ const EnhancedProductCard = ({ product, onAddToCart, cartQuantity = 0 }) => {
 
   const handleVariantSelect = (variant) => {
     setSelectedVariant(variant);
+  };
+
+  const handleImageChange = (imageUrl) => {
+    setCurrentImage(imageUrl);
   };
 
   const handleAddToCart = () => {
@@ -52,7 +57,7 @@ const EnhancedProductCard = ({ product, onAddToCart, cartQuantity = 0 }) => {
       {/* Product Image */}
       <div className="relative">
         <img
-          src={product.image_url || '/placeholder-product.png'}
+          src={currentImage || product.image_url || '/placeholder-product.png'}
           alt={product.name}
           className="w-full h-48 object-cover"
         />
@@ -92,6 +97,7 @@ const EnhancedProductCard = ({ product, onAddToCart, cartQuantity = 0 }) => {
             productId={product.id}
             onVariantSelect={handleVariantSelect}
             selectedVariant={selectedVariant}
+            onImageChange={handleImageChange}
           />
         </div>
 

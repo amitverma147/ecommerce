@@ -157,22 +157,23 @@ function HeroSection() {
                     src={slide.image_url}
                     alt={slide.name || "Banner"}
                     fill
-                    sizes="(max-width: 768px) 100vw, 100vw"
-                    className="object-cover"
+                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 100vw, 100vw"
+                    className="object-cover object-center"
                     priority={slide.priority || index === 0}
+                    quality={90}
                   />
                   {/* Overlay with banner name and description */}
-                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center px-4">
-                    <div className="text-center text-white max-w-4xl mx-auto">
-                      <h2 className="text-xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold mb-3 sm:mb-6 leading-tight drop-shadow-lg">
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center px-2 sm:px-4">
+                    <div className="text-center text-white max-w-xs sm:max-w-2xl md:max-w-4xl mx-auto">
+                      <h2 className="text-lg sm:text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-bold mb-2 sm:mb-4 md:mb-6 leading-tight drop-shadow-lg break-words">
                         {slide.name}
                       </h2>
                       {slide.description && (
-                        <p className="text-sm sm:text-base md:text-lg lg:text-xl mb-4 sm:mb-8 max-w-xs sm:max-w-md md:max-w-2xl mx-auto leading-relaxed drop-shadow-md">
+                        <p className="text-xs sm:text-sm md:text-base lg:text-lg mb-3 sm:mb-6 md:mb-8 leading-relaxed drop-shadow-md break-words">
                           {slide.description}
                         </p>
                       )}
-                      <button className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 sm:px-8 sm:py-4 rounded-full font-bold text-sm sm:text-base md:text-lg shadow-xl transform hover:scale-105 transition-all duration-300 border-2 border-orange-500">
+                      <button className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 sm:px-6 sm:py-3 md:px-8 md:py-4 rounded-full font-bold text-xs sm:text-sm md:text-base shadow-xl transform hover:scale-105 transition-all duration-300 border-2 border-orange-500">
                         SHOP NOW
                       </button>
                     </div>
