@@ -2702,44 +2702,67 @@ export async function getAllWarehouses({ type, is_active } = {}) {
 
 export async function getAllZones(options = {}) {
   const { page = 1, limit = 50, search = "", active_only = "false" } = options;
+  const offset = (page - 1) * limit;
 
-  try {
-    const params = new URLSearchParams({
-      page: page.toString(),
-      limit: limit.toString(),
-      search,
-      active_only,
-    });
+  let query = supabaseAdmin.from("delivery_zones").select(
+    `
+      id,
+      name,
+      display_name,
+      is_nationwide,
+      is_active,
+      description,
+      created_at,
+      zone_pincodes(pincode, city, state)
+    `,
+    { count: "exact" }
+  );
 
-    // Use appropriate API base URL based on environment
-    const API_BASE_URL = import.meta.env.DEV
-      ? "http://localhost:8000/api"
-      : import.meta.env.VITE_API_BASE_URL ||
-        (window.location.origin.includes("localhost")
-          ? "http://localhost:8000/api"
-          : "https://ecommerce-pddk.vercel.app/api");
-
-    const response = await fetch(`${API_BASE_URL}/zones?${params}`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      return {
-        success: false,
-        error: errorData.error || "Failed to fetch zones",
-      };
-    }
-
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error("Error fetching zones:", error);
-    return { success: false, error: error.message };
+  if (search) {
+    query = query.or(`name.ilike.%${search}%,display_name.ilike.%${search}%`);
   }
+
+  if (active_only === "true") {
+    query = query.eq("is_active", true);
+  }
+
+  query = query.range(offset, offset + limit - 1);
+
+  const { data, error, count } = await query;
+
+  if (error) return { success: false, error: error.message };
+
+  const transformedData =
+    data?.map((zone) => {
+      const pincodes = zone.zone_pincodes || [];
+      const states = [
+        ...new Set(pincodes.map((zp) => zp.state).filter(Boolean) || []),
+      ];
+
+      return {
+        id: zone.id,
+        name: zone.display_name || zone.name,
+        display_name: zone.display_name,
+        state: states.length === 1 ? states[0] : "Multiple States",
+        is_nationwide: zone.is_nationwide,
+        is_active: zone.is_active,
+        description: zone.description,
+        pincode_count: pincodes.length,
+        states: states,
+        created_at: zone.created_at,
+      };
+    }) || [];
+
+  return {
+    success: true,
+    data: transformedData,
+    pagination: {
+      total: count,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      totalPages: Math.ceil(count / limit),
+    },
+  };
 }
 
 // Create a new warehouse
