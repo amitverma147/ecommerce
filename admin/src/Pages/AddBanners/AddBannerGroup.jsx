@@ -1,58 +1,70 @@
-import React, { useState, useEffect } from "react";
-import axios from "axios";
+import { useState, useEffect, useCallback } from "react";
+import PropTypes from "prop-types";
 import { useNavigate, useLocation } from "react-router-dom";
-import { FaEdit, FaTrash, FaPlus } from 'react-icons/fa';
-import { notifications } from '@mantine/notifications';
-import { supabaseAdmin } from '../../utils/supabase.js';
-
-const API_URL = "https://ecommerce-8342.onrender.com/api/banner-groups";
-const BANNER_API_URL = "https://ecommerce-8342.onrender.com/api/banner";
+import { FaEdit, FaTrash, FaPlus } from "react-icons/fa";
+import { notifications } from "@mantine/notifications";
+import {
+  getAllBannerGroups,
+  addBannerGroup,
+  updateBannerGroup,
+  deleteBannerGroup,
+  getBanner,
+} from "../../utils/supabaseApi";
 
 // Component to handle adding/editing a Banner Group
 const BannerGroupForm = ({ initialData, onSave, onCancel, bannerId }) => {
-  const [name, setName] = useState(initialData?.name || '');
+  const [name, setName] = useState(initialData?.name || "");
   const [image, setImage] = useState(null);
-  
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const formData = new FormData();
-    formData.append('name', name);
-    if (image) {
-      formData.append('image_url', image);
-    }
-    // Add bannerId to the formData if it exists
-    if (bannerId) {
-      formData.append('banner_id', bannerId);
-    }
-      
+
     try {
       if (initialData) {
         // Update existing banner group
-        await axios.put(`${API_URL}/update/${initialData.id}`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        notifications.show({ color: 'green', message: 'Banner Group updated successfully.' });
+        const result = await updateBannerGroup(initialData.id, name, image);
+        if (result.success) {
+          notifications.show({
+            color: "green",
+            message: "Banner Group updated successfully.",
+          });
+        } else {
+          throw new Error(result.error);
+        }
       } else {
         // Add new banner group
-        await axios.post(`${API_URL}/add`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        notifications.show({ color: 'green', message: 'Banner Group added successfully.' });
+        const result = await addBannerGroup(name, image, bannerId);
+        if (result.success) {
+          notifications.show({
+            color: "green",
+            message: "Banner Group added successfully.",
+          });
+        } else {
+          throw new Error(result.error);
+        }
       }
       onSave(); // Call the callback from the parent to close the form and refresh the list
     } catch (error) {
-      console.error('Error saving banner group:', error);
-      notifications.show({ color: 'red', message: 'Failed to save banner group.' });
+      console.error("Error saving banner group:", error);
+      notifications.show({
+        color: "red",
+        message: "Failed to save banner group.",
+      });
     }
   };
 
   return (
     <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center">
       <div className="bg-white p-8 rounded-md shadow-lg w-96">
-        <h2 className="text-2xl font-bold mb-4">{initialData ? 'Edit Banner Group' : 'Add Banner Group'}</h2>
+        <h2 className="text-2xl font-bold mb-4">
+          {initialData ? "Edit Banner Group" : "Add Banner Group"}
+        </h2>
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
-            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="name">
+            <label
+              className="block text-gray-700 text-sm font-bold mb-2"
+              htmlFor="name"
+            >
               Banner Group Name
             </label>
             <input
@@ -66,7 +78,10 @@ const BannerGroupForm = ({ initialData, onSave, onCancel, bannerId }) => {
             />
           </div>
           <div className="mb-4">
-            <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="image">
+            <label
+              className="block text-gray-700 text-sm font-bold mb-2"
+              htmlFor="image"
+            >
               Choose File
             </label>
             <input
@@ -76,7 +91,9 @@ const BannerGroupForm = ({ initialData, onSave, onCancel, bannerId }) => {
               className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
             />
             {initialData && initialData.image_url && !image && (
-              <p className="text-sm text-gray-500 mt-2">Current image selected.</p>
+              <p className="text-sm text-gray-500 mt-2">
+                Current image selected.
+              </p>
             )}
           </div>
           <div className="flex items-center justify-between">
@@ -91,7 +108,7 @@ const BannerGroupForm = ({ initialData, onSave, onCancel, bannerId }) => {
               type="submit"
               className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
             >
-              {initialData ? 'Update' : 'Add'}
+              {initialData ? "Update" : "Add"}
             </button>
           </div>
         </form>
@@ -100,64 +117,94 @@ const BannerGroupForm = ({ initialData, onSave, onCancel, bannerId }) => {
   );
 };
 
+BannerGroupForm.propTypes = {
+  initialData: PropTypes.shape({
+    id: PropTypes.number,
+    name: PropTypes.string,
+    image_url: PropTypes.string,
+  }),
+  onSave: PropTypes.func.isRequired,
+  onCancel: PropTypes.func.isRequired,
+  bannerId: PropTypes.number.isRequired,
+};
+
 // Main Banner Groups page component
 const AddBannerGroup = () => {
   const [bannerGroups, setBannerGroups] = useState([]);
   const [isFormVisible, setIsFormVisible] = useState(false);
   const [editingBannerGroup, setEditingBannerGroup] = useState(null);
-  const [bannerName, setBannerName] = useState('');
+  const [bannerName, setBannerName] = useState("");
   const navigate = useNavigate();
   const location = useLocation();
 
   const queryParams = new URLSearchParams(location.search);
-  const bannerId = queryParams.get('bannerId');
+  const bannerId = queryParams.get("bannerId");
 
-  const fetchBannerGroups = async () => {
+  const fetchBannerGroups = useCallback(async () => {
     try {
       if (!bannerId) {
         setBannerGroups([]);
         return;
       }
-      const { data, error } = await supabaseAdmin
-        .from("add_banner_group")
-        .select("*")
-        .eq("banner_id", bannerId);
-      
-      if (error) throw error;
-      setBannerGroups(data);
+      const result = await getAllBannerGroups(bannerId);
+      if (result.success) {
+        setBannerGroups(result.data);
+      } else {
+        throw new Error(result.error);
+      }
     } catch (error) {
-      console.error('Error fetching banner groups:', error);
-      notifications.show({ color: 'red', message: 'Failed to load banner groups.' });
+      console.error("Error fetching banner groups:", error);
+      notifications.show({
+        color: "red",
+        message: "Failed to load banner groups.",
+      });
     }
-  };
+  }, [bannerId]);
 
-  const fetchBannerName = async () => {
+  const fetchBannerName = useCallback(async () => {
     if (bannerId) {
       try {
-        const response = await axios.get(`${BANNER_API_URL}/${bannerId}`);
-        setBannerName(response.data.banner.name);
+        const result = await getBanner(bannerId);
+        if (result.success) {
+          setBannerName(result.banner.name);
+        } else {
+          throw new Error(result.error);
+        }
       } catch (error) {
-        console.error('Error fetching banner name:', error);
-        setBannerName('Unknown');
-        notifications.show({ color: 'red', message: 'Failed to load banner name.' });
+        console.error("Error fetching banner name:", error);
+        setBannerName("Unknown");
+        notifications.show({
+          color: "red",
+          message: "Failed to load banner name.",
+        });
       }
     }
-  };
+  }, [bannerId]);
 
   useEffect(() => {
     fetchBannerGroups();
     fetchBannerName();
-  }, [bannerId]);
+  }, [fetchBannerGroups, fetchBannerName]);
 
   const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this banner group?')) {
+    if (window.confirm("Are you sure you want to delete this banner group?")) {
       try {
-        await axios.delete(`${API_URL}/delete/${id}`);
-        fetchBannerGroups();
-        notifications.show({ color: 'green', message: 'Banner Group deleted successfully.' });
+        const result = await deleteBannerGroup(id);
+        if (result.success) {
+          fetchBannerGroups();
+          notifications.show({
+            color: "green",
+            message: "Banner Group deleted successfully.",
+          });
+        } else {
+          throw new Error(result.error);
+        }
       } catch (error) {
-        console.error('Error deleting banner group:', error);
-        notifications.show({ color: 'red', message: 'Failed to delete banner group.' });
+        console.error("Error deleting banner group:", error);
+        notifications.show({
+          color: "red",
+          message: "Failed to delete banner group.",
+        });
       }
     }
   };
@@ -176,7 +223,7 @@ const AddBannerGroup = () => {
     <div className="p-8 bg-gray-100 min-h-screen">
       <button
         className="text-blue-500 hover:underline mb-4"
-        onClick={() => navigate('/add-banner')}
+        onClick={() => navigate("/add-banner")}
       >
         ← Back to Banners
       </button>
@@ -229,14 +276,22 @@ const AddBannerGroup = () => {
               bannerGroups.map((group) => (
                 <tr key={group.id}>
                   <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">
-                    <p className="text-gray-900 whitespace-no-wrap">{group.id}</p>
+                    <p className="text-gray-900 whitespace-no-wrap">
+                      {group.id}
+                    </p>
                   </td>
                   <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">
-                    <p className="text-gray-900 whitespace-no-wrap">{group.name}</p>
+                    <p className="text-gray-900 whitespace-no-wrap">
+                      {group.name}
+                    </p>
                   </td>
                   <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">
                     {group.image_url && (
-                      <img src={group.image_url} alt={group.name} className="h-12 w-12 object-cover rounded-full" />
+                      <img
+                        src={group.image_url}
+                        alt={group.name}
+                        className="h-12 w-12 object-cover rounded-full"
+                      />
                     )}
                   </td>
                   <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">
@@ -255,7 +310,9 @@ const AddBannerGroup = () => {
                       </button>
                       <button
                         className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-3 rounded text-sm"
-                        onClick={() => navigate(`/add-banner-group-products/${group.id}`)}
+                        onClick={() =>
+                          navigate(`/add-banner-group-products/${group.id}`)
+                        }
                       >
                         Products
                       </button>
@@ -265,7 +322,9 @@ const AddBannerGroup = () => {
               ))
             ) : (
               <tr>
-                <td colSpan="4" className="text-center py-4">No Banner groups found.</td>
+                <td colSpan="4" className="text-center py-4">
+                  No Banner groups found.
+                </td>
               </tr>
             )}
           </tbody>

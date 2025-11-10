@@ -1,6 +1,13 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import axios from "axios";
+import { notifications } from "@mantine/notifications";
+import {
+  getBrand,
+  getProductsForBrand,
+  getAllProducts,
+  mapProductToBrand,
+  removeProductFromBrand,
+} from "../../utils/supabaseApi";
 
 const BrandProducts = () => {
   const { id } = useParams(); // brand_id
@@ -15,37 +22,63 @@ const BrandProducts = () => {
   // Fetch Brand info
   const fetchBrand = useCallback(async () => {
     try {
-      const res = await axios.get(
-        `${import.meta.env.VITE_API_BASE_URL}/brand/${id}`
-      );
-      setBrand(res.data.brand);
+      const result = await getBrand(id);
+      if (result.success) {
+        setBrand(result.brand);
+      } else {
+        console.error("Failed to fetch Brand details:", result.error);
+        notifications.show({
+          color: "red",
+          message: "Failed to load brand details.",
+        });
+      }
     } catch (err) {
       console.error("Failed to fetch Brand details:", err);
+      notifications.show({
+        color: "red",
+        message: "Failed to load brand details.",
+      });
     }
   }, [id]);
 
   // Fetch products mapped to this Brand
   const fetchBrandProducts = useCallback(async () => {
     try {
-      const res = await axios.get(
-        `${import.meta.env.VITE_API_BASE_URL}/product-brand/${id}`
-      );
-      const mapped = res.data.map((item) => item.products);
-      setProductsInBrand(mapped);
+      const result = await getProductsForBrand(id);
+      if (result.success) {
+        setProductsInBrand(result.data);
+      } else {
+        console.error("Failed to fetch products for Brand:", result.error);
+        notifications.show({
+          color: "red",
+          message: "Failed to load brand products.",
+        });
+      }
     } catch (err) {
       console.error("Failed to fetch products for Brand:", err);
+      notifications.show({
+        color: "red",
+        message: "Failed to load brand products.",
+      });
     }
   }, [id]);
 
   // Fetch all available products
   const fetchAllProducts = useCallback(async () => {
     try {
-      const res = await axios.get(
-        `${import.meta.env.VITE_API_BASE_URL}/productsroute/allproducts`
-      );
-      setAllProducts(res.data);
+      const result = await getAllProducts();
+      if (result.success) {
+        setAllProducts(result.products);
+      } else {
+        console.error("Failed to fetch all products:", result.error);
+        notifications.show({
+          color: "red",
+          message: "Failed to load products.",
+        });
+      }
     } catch (err) {
       console.error("Failed to fetch all products:", err);
+      notifications.show({ color: "red", message: "Failed to load products." });
     }
   }, []);
 
@@ -53,33 +86,43 @@ const BrandProducts = () => {
     if (!selectedProductId) return;
 
     try {
-      await axios.post(
-        `${import.meta.env.VITE_API_BASE_URL}/product-brand/map`,
-        {
-          product_id: selectedProductId,
-          brand_id: id,
-        }
-      );
-      setSelectedProductId("");
-      await fetchBrandProducts();
+      const result = await mapProductToBrand(selectedProductId, id);
+      if (result.success) {
+        setSelectedProductId("");
+        await fetchBrandProducts();
+        notifications.show({
+          color: "green",
+          message: "Product added to brand successfully.",
+        });
+      } else {
+        throw new Error(result.error);
+      }
     } catch (err) {
-      alert("Product already mapped or an error occurred");
+      notifications.show({
+        color: "red",
+        message: "Product already mapped or an error occurred.",
+      });
       console.error(err);
     }
   };
 
   const handleRemoveProduct = async (product_id) => {
     try {
-      await axios.post(
-        `${import.meta.env.VITE_API_BASE_URL}/product-brand/remove`,
-        {
-          product_id,
-          brand_id: id,
-        }
-      );
-      await fetchBrandProducts();
+      const result = await removeProductFromBrand(product_id, id);
+      if (result.success) {
+        await fetchBrandProducts();
+        notifications.show({
+          color: "green",
+          message: "Product removed from brand successfully.",
+        });
+      } else {
+        throw new Error(result.error);
+      }
     } catch (err) {
-      alert("Failed to remove product");
+      notifications.show({
+        color: "red",
+        message: "Failed to remove product from brand.",
+      });
       console.error(err);
     }
   };
@@ -99,10 +142,10 @@ const BrandProducts = () => {
 
   if (loading || !brand) return <p className="p-4">Loading...</p>;
 
-  const mappedProductIds = productsInBrand.map((p) => p.id);
+  const mappedProductIds = productsInBrand.map((p) => p.product_id);
 
   return (
-    <div className="p-6 max-w-screen-lg mx-auto">
+    <div className="p-6 max-w-5xl mx-auto">
       <div className="mb-6">
         <button
           onClick={() => navigate("/brands")}
@@ -157,12 +200,12 @@ const BrandProducts = () => {
             </thead>
             <tbody>
               {productsInBrand.map((product) => (
-                <tr key={product.id} className="border-t">
-                  <td className="py-2 px-4">{product.name}</td>
-                  <td className="py-2 px-4">₹{product.price}</td>
+                <tr key={product.product_id} className="border-t">
+                  <td className="py-2 px-4">{product.products.name}</td>
+                  <td className="py-2 px-4">₹{product.products.price}</td>
                   <td className="py-2 px-4">
                     <button
-                      onClick={() => handleRemoveProduct(product.id)}
+                      onClick={() => handleRemoveProduct(product.product_id)}
                       className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
                     >
                       🗑 Remove

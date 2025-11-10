@@ -1,10 +1,11 @@
-import React from 'react';
+
 import { Box } from '@mantine/core';
 
 export function SitemarkIcon({ size = 24, color = 'currentColor' }) {
   return (
     <Box sx={{ height: size, width: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <svg
+
         width={size}
         height={size}
         viewBox="0 0 86 19"

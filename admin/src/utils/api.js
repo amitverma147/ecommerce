@@ -12,6 +12,25 @@ const api = axios.create({
   withCredentials: false, // Disable by default, enable per request if needed
 });
 
+// Helper function for API calls with better error handling
+export const apiCall = async (endpoint, options = {}) => {
+  try {
+    const response = await api({
+      url: endpoint,
+      method: options.method || 'GET',
+      data: options.body ? JSON.parse(options.body) : options.data,
+      headers: {
+        ...api.defaults.headers,
+        ...options.headers
+      }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('API call error:', error);
+    throw error.response?.data || error;
+  }
+};
+
 // Request interceptor to add auth token if available
 api.interceptors.request.use(
   (config) => {

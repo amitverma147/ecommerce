@@ -80,8 +80,11 @@ import ReturnOrdersAdmin from "./Pages/ReturnOrders/index.jsx";
 import BulkOrderEnquiries from "./Components/BulkOrders/BulkOrderEnquiries.jsx";
 import WholesaleBulkOrders from "./Components/BulkOrders/WholesaleBulkOrders.jsx";
 import BulkProductSettings from "./Components/BulkProducts/BulkProductSettings.jsx";
+import BulkOrders from "./Pages/BulkOrders/BulkOrders.jsx";
 import ProductSectionsManagement from "./Pages/ProductSections/index.jsx";
 import StoreSectionMapping from "./Pages/StoreSectionMapping/StoreSectionMapping.jsx";
+import CodOrders from "./Pages/CodOrders/CodOrders.jsx";
+import DeliveryZones from "./Pages/DeliveryZones/index.jsx";
 
 const MainLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -146,6 +149,13 @@ const spotlightActions = [
     description: "View customer enquiries",
     icon: <FaQuestionCircle size={18} />,
     onClick: () => (window.location.href = "/enquiry"),
+  },
+  {
+    id: "delivery-zones",
+    label: "Delivery Zones",
+    description: "Manage delivery zones and pincodes",
+    icon: <FaBoxOpen size={18} />,
+    onClick: () => (window.location.href = "/delivery-zones"),
   },
 ];
 
@@ -376,6 +386,18 @@ function App() {
         {
           path: "/product-sections",
           element: <ProductSectionsManagement />,
+        },
+        {
+          path: "/bulk-orders",
+          element: <BulkOrders />,
+        },
+        {
+          path: "/cod-orders",
+          element: <CodOrders />,
+        },
+        {
+          path: "/delivery-zones",
+          element: <DeliveryZones />,
         },
       ],
     },

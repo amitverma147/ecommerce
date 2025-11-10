@@ -28,6 +28,12 @@ import {
   IconEye,
   IconEyeOff,
 } from "@tabler/icons-react";
+import {
+  getAllProductSections,
+  updateProductSection,
+  toggleProductSectionStatus,
+  updateProductSectionOrder,
+} from "../../utils/supabaseApi";
 
 const ProductSectionsManagement = () => {
   const [sections, setSections] = useState([]);
@@ -42,22 +48,16 @@ const ProductSectionsManagement = () => {
   });
   const [submitting, setSubmitting] = useState(false);
 
-  const API_BASE_URL =
-    import.meta.env.VITE_API_BASE_URL ||
-    import.meta.env.VITE_BACKEND ||
-    "http://localhost:8000/api";
-
   // Fetch all product sections
   const fetchSections = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/product-sections`);
-      const data = await response.json();
+      const result = await getAllProductSections();
 
-      if (data.success) {
-        setSections(data.data);
+      if (result.success) {
+        setSections(result.sections);
       } else {
-        throw new Error(data.error || "Failed to fetch sections");
+        throw new Error(result.error || "Failed to fetch sections");
       }
     } catch (error) {
       console.error("Error fetching sections:", error);
@@ -74,19 +74,9 @@ const ProductSectionsManagement = () => {
   // Toggle section active status
   const toggleSectionStatus = async (sectionId) => {
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/product-sections/${sectionId}/toggle`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
-      );
+      const result = await toggleProductSectionStatus(sectionId);
 
-      const data = await response.json();
-
-      if (data.success) {
+      if (result.success) {
         setSections(
           sections.map((section) =>
             section.id === sectionId
@@ -96,11 +86,11 @@ const ProductSectionsManagement = () => {
         );
         notifications.show({
           title: "Success",
-          message: data.message,
+          message: result.message,
           color: "green",
         });
       } else {
-        throw new Error(data.error || "Failed to toggle section status");
+        throw new Error(result.error || "Failed to toggle section status");
       }
     } catch (error) {
       console.error("Error toggling section status:", error);
@@ -116,23 +106,12 @@ const ProductSectionsManagement = () => {
   const updateSection = async () => {
     try {
       setSubmitting(true);
-      const response = await fetch(
-        `${API_BASE_URL}/product-sections/${selectedSection.id}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(formData),
-        }
-      );
+      const result = await updateProductSection(selectedSection.id, formData);
 
-      const data = await response.json();
-
-      if (data.success) {
+      if (result.success) {
         setSections(
           sections.map((section) =>
-            section.id === selectedSection.id ? data.data : section
+            section.id === selectedSection.id ? result.section : section
           )
         );
         notifications.show({
@@ -142,7 +121,7 @@ const ProductSectionsManagement = () => {
         });
         closeEditModal();
       } else {
-        throw new Error(data.error || "Failed to update section");
+        throw new Error(result.error || "Failed to update section");
       }
     } catch (error) {
       console.error("Error updating section:", error);
@@ -164,24 +143,16 @@ const ProductSectionsManagement = () => {
         display_order: index + 1,
       }));
 
-      const response = await fetch(`${API_BASE_URL}/product-sections/order`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ sections: sectionsWithOrder }),
-      });
+      const result = await updateProductSectionOrder(sectionsWithOrder);
 
-      const data = await response.json();
-
-      if (data.success) {
+      if (result.success) {
         notifications.show({
           title: "Success",
           message: "Section order updated successfully",
           color: "green",
         });
       } else {
-        throw new Error(data.error || "Failed to update order");
+        throw new Error(result.error || "Failed to update order");
       }
     } catch (error) {
       console.error("Error updating order:", error);
@@ -231,7 +202,6 @@ const ProductSectionsManagement = () => {
 
   useEffect(() => {
     fetchSections();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

@@ -1,12 +1,13 @@
 /* eslint-disable react/prop-types */
 import { useState, useEffect, useRef } from "react";
-import axios from "axios";
 import { FaEdit, FaTrash, FaPlus, FaPlay } from "react-icons/fa";
-
-// Base URL for video cards backend APIs
-const API_URL = import.meta.env.VITE_API_BASE_URL
-  ? `${import.meta.env.VITE_API_BASE_URL}/video-cards`
-  : "http://localhost:8000/api/video-cards";
+import { notifications } from "@mantine/notifications";
+import {
+  getAllVideoCards,
+  addVideoCard,
+  updateVideoCard,
+  deleteVideoCard,
+} from "../../utils/supabaseApi";
 
 // Component to handle adding/editing a Video Card
 const VideoCardForm = ({ initialData, onSave, onCancel }) => {
@@ -46,24 +47,20 @@ const VideoCardForm = ({ initialData, onSave, onCancel }) => {
     e.preventDefault();
     setIsSubmitting(true);
 
-    const formData = new FormData();
-    formData.append("title", title);
-    formData.append("description", description);
-    formData.append("video_url", videoUrl);
-    formData.append("thumbnail_url", thumbnailUrl);
-    formData.append("active", active.toString());
-    formData.append("position", position.toString());
-
-    // Temporarily disable file upload
-    // if (thumbnail) {
-    //   formData.append("thumbnail", thumbnail);
-    // }
+    const videoCardData = {
+      title,
+      description,
+      video_url: videoUrl,
+      thumbnail_url: thumbnailUrl,
+      active: active.toString(),
+      position: position.toString(),
+    };
 
     try {
       if (initialData) {
-        await onSave(initialData.id, formData);
+        await onSave(initialData.id, videoCardData);
       } else {
-        await onSave(formData);
+        await onSave(videoCardData);
       }
     } catch (error) {
       console.error("Error saving video card:", error);
@@ -211,46 +208,56 @@ const VideoCards = () => {
 
   const fetchVideoCards = async () => {
     try {
-      const response = await axios.get(`${API_URL}/all`);
-      if (response.data.success) {
-        setVideoCards(response.data.videoCards);
+      const result = await getAllVideoCards();
+      if (result.success) {
+        setVideoCards(result.data);
+      } else {
+        console.error("Error fetching video cards:", result.error);
+        notifications.show({
+          color: "red",
+          message: "Failed to load video cards.",
+        });
       }
     } catch (error) {
       console.error("Error fetching video cards:", error);
+      notifications.show({
+        color: "red",
+        message: "Failed to load video cards.",
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSave = async (idOrFormData, formData) => {
+  const handleSave = async (idOrData, data) => {
     try {
-      let response;
-      let actualId = idOrFormData;
-      let actualFormData = formData;
+      let result;
 
-      // Handle the case where only formData is passed (for adding)
-      if (idOrFormData instanceof FormData) {
-        actualId = null;
-        actualFormData = idOrFormData;
-      }
-
-      if (actualId) {
-        response = await axios.put(
-          `${API_URL}/update/${actualId}`,
-          actualFormData
-        );
+      // Handle the case where only data is passed (for adding)
+      if (typeof idOrData === "object" && !data) {
+        result = await addVideoCard(idOrData);
       } else {
-        response = await axios.post(`${API_URL}/add`, actualFormData);
+        // Handle updating with id and data
+        result = await updateVideoCard(idOrData, data);
       }
 
-      if (response.data.success) {
+      if (result.success) {
         await fetchVideoCards();
         setShowForm(false);
         setEditingCard(null);
+        notifications.show({
+          color: "green",
+          message: "Video card saved successfully.",
+        });
+      } else {
+        throw new Error(result.error);
       }
     } catch (error) {
       console.error("Error saving video card:", error);
-      alert("Error saving video card. Please try again.");
+      notifications.show({
+        color: "red",
+        message: "Failed to save video card.",
+      });
     }
   };
 
@@ -258,13 +265,22 @@ const VideoCards = () => {
     if (!confirm("Are you sure you want to delete this video card?")) return;
 
     try {
-      const response = await axios.delete(`${API_URL}/delete/${id}`);
-      if (response.data.success) {
+      const result = await deleteVideoCard(id);
+      if (result.success) {
         await fetchVideoCards();
+        notifications.show({
+          color: "green",
+          message: "Video card deleted successfully.",
+        });
+      } else {
+        throw new Error(result.error);
       }
     } catch (error) {
       console.error("Error deleting video card:", error);
-      alert("Error deleting video card. Please try again.");
+      notifications.show({
+        color: "red",
+        message: "Failed to delete video card.",
+      });
     }
   };
 

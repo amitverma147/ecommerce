@@ -20,7 +20,15 @@ import {
   Switch,
   Skeleton,
   CloseButton,
+  MultiSelect,
+  Radio,
+  Divider,
 } from "@mantine/core";
+import {
+  fetchWarehouses,
+  createProductWithWarehouse,
+} from "../../utils/warehouseApi";
+import { fetchZones } from "../../utils/zoneApi";
 import { FaEdit, FaTrash, FaPlus, FaSearch, FaUpload } from "react-icons/fa";
 
 // Small inline placeholder SVG for missing product images
@@ -235,7 +243,6 @@ const formatIndianPrice = (price) => {
 };
 
 import {
-  addProduct,
   updateProduct,
   deleteProduct,
   getAllCategories,
@@ -314,6 +321,14 @@ const ProductsPage = () => {
     second_preview_image: "",
     enquiry: false,
     shipping_amount: 0,
+    // Warehouse mapping settings
+    warehouse_mapping_type: "auto_central_to_zonal",
+    assigned_warehouse_ids: [], // legacy field
+    // Enhanced fallback system
+    primary_warehouses: [], // Zonal warehouses (first priority)
+    fallback_warehouses: [], // Central warehouses (fallback)
+    enable_fallback: true,
+    warehouse_notes: "",
   });
   const itemsPerLoad = 10;
 
@@ -321,10 +336,36 @@ const ProductsPage = () => {
   const [videoFile, setVideoFile] = useState(null); // for selected video file
   const [displayImageFile, setDisplayImageFile] = useState(null); // for display image file
 
+  // Variants state
+  const [hasVariants, setHasVariants] = useState(false);
+  const [variants, setVariants] = useState([]);
+  const [variantImages, setVariantImages] = useState({});
+
+  // Default variant structure
+  const defaultVariant = {
+    variant_name: "",
+    variant_price: 0,
+    variant_old_price: 0,
+    variant_discount: 0,
+    variant_stock: 0,
+    variant_weight: "",
+    variant_unit: "kg",
+    variant_quantity: 1,
+    variant_features: "",
+    shipping_amount: 0,
+    is_default: false,
+    active: true
+  };
+
   const [brandOptions, setBrandOptions] = useState([]);
   const [brandsLoading, setBrandsLoading] = useState(true);
   const [storeOptions, setStoreOptions] = useState([]);
   const [storesLoading, setStoresLoading] = useState(true);
+  const [warehousesLoading, setWarehousesLoading] = useState(false);
+  const [centralWarehouses, setCentralWarehouses] = useState([]);
+  const [zonalWarehouses, setZonalWarehouses] = useState([]);
+  const [zones, setZones] = useState([]);
+  const [zonesLoading, setZonesLoading] = useState(false);
 
   useEffect(() => {
     const fetchSetting = async () => {
@@ -375,6 +416,8 @@ const ProductsPage = () => {
         fetchGroups();
         fetchBrands();
         fetchStores();
+        fetchWarehousesData();
+        fetchZonesData();
       }
     });
     return () => subscription.unsubscribe();
@@ -435,6 +478,54 @@ const ProductsPage = () => {
       }
     } catch (err) {
       console.error("Error fetching groups:", err);
+    }
+  };
+
+  // Fetch warehouses for dropdown
+  const fetchWarehousesData = async () => {
+    setWarehousesLoading(true);
+    try {
+      // Fetch all warehouses with hierarchy support
+      const allWarehousesResult = await fetchWarehouses();
+      if (allWarehousesResult.success) {
+        const allWarehouses = allWarehousesResult.warehouses;
+
+        // Separate central and zonal warehouses with hierarchy info
+        const centralWarehouses = allWarehouses.filter(
+          (w) => w.type === "central"
+        );
+        const zonalWarehouses = allWarehouses.filter((w) => w.type === "zonal");
+
+        setCentralWarehouses(centralWarehouses);
+        setZonalWarehouses(zonalWarehouses);
+
+        console.log("Warehouses loaded:", {
+          total: allWarehouses.length,
+          central: centralWarehouses.length,
+          zonal: zonalWarehouses.length,
+        });
+      } else {
+        console.error("Failed to fetch warehouses:", allWarehousesResult.error);
+      }
+    } catch (err) {
+      console.error("Error fetching warehouses:", err);
+    } finally {
+      setWarehousesLoading(false);
+    }
+  };
+
+  // Fetch zones for dropdown
+  const fetchZonesData = async () => {
+    setZonesLoading(true);
+    try {
+      const zonesResult = await fetchZones();
+      if (zonesResult.success) {
+        setZones(zonesResult.data || []);
+      }
+    } catch (err) {
+      console.error("Error fetching zones:", err);
+    } finally {
+      setZonesLoading(false);
     }
   };
 
@@ -652,6 +743,11 @@ const ProductsPage = () => {
     }
   }, [subcategoryFilter, groups, groupFilter]);
 
+  // Fetch warehouses on component mount
+  useEffect(() => {
+    fetchWarehousesData();
+  }, []);
+
   const handleDeleteProduct = async (id) => {
     if (!window.confirm("Are you sure you want to delete this product?")) {
       return;
@@ -681,7 +777,7 @@ const ProductsPage = () => {
       subcategory_id: "",
       group_id: "",
       brand_name: "",
-      stock: 0,
+      stock: 100,
       active: true,
       description: "",
       specifications: "",
@@ -711,11 +807,25 @@ const ProductsPage = () => {
       enquiry: false,
       shipping_amount: 0,
       store_id: "",
+      // Enhanced warehouse mapping settings
+      warehouse_mapping_type: "auto_central_to_zonal",
+      assigned_warehouse_ids: [],
+      primary_warehouses: [],
+      fallback_warehouses: [],
+      enable_fallback: true,
+      warehouse_notes: "",
     });
+    // Reset variants state
+    setHasVariants(false);
+    setVariants([]);
+    setVariantImages({});
     setModalOpen(true);
     // Refresh brand and store data
     fetchBrands();
     fetchStores();
+    // Refresh warehouse and zone data
+    fetchWarehousesData();
+    fetchZonesData();
   };
 
   const openEditModal = (product) => {
@@ -725,6 +835,9 @@ const ProductsPage = () => {
     // Refresh brand and store data
     fetchBrands();
     fetchStores();
+    // Refresh warehouse and zone data
+    fetchWarehousesData();
+    fetchZonesData();
   };
 
   const handleSaveProduct = async () => {
@@ -734,6 +847,87 @@ const ProductsPage = () => {
     // Remove 'video' field if a video file is being uploaded (to avoid sending an old URL)
     if (videoFile) {
       delete productPayload.video;
+    }
+
+    // Convert warehouse IDs to integers for database compatibility
+    if (
+      productPayload.assigned_warehouse_ids &&
+      Array.isArray(productPayload.assigned_warehouse_ids)
+    ) {
+      productPayload.assigned_warehouse_ids =
+        productPayload.assigned_warehouse_ids.map((id) => parseInt(id, 10));
+    }
+
+    // Convert primary warehouse IDs to integers
+    if (
+      productPayload.primary_warehouses &&
+      Array.isArray(productPayload.primary_warehouses)
+    ) {
+      productPayload.primary_warehouses = productPayload.primary_warehouses.map(
+        (id) => parseInt(id, 10)
+      );
+    }
+
+    // Convert warehouse IDs to integers
+    if (
+      productPayload.fallback_warehouses &&
+      Array.isArray(productPayload.fallback_warehouses)
+    ) {
+      productPayload.fallback_warehouses =
+        productPayload.fallback_warehouses.map((id) => parseInt(id, 10));
+    }
+
+    if (
+      productPayload.assigned_warehouse_ids &&
+      Array.isArray(productPayload.assigned_warehouse_ids)
+    ) {
+      productPayload.assigned_warehouse_ids =
+        productPayload.assigned_warehouse_ids.map((id) => parseInt(id, 10));
+    }
+
+    // Ensure enable_fallback is boolean
+    productPayload.enable_fallback = Boolean(productPayload.enable_fallback);
+
+    // Map UI warehouse types to backend-compatible format
+    switch (productPayload.warehouse_mapping_type) {
+      case "auto_central_to_zonal":
+        productPayload.warehouse_mapping_type = "nationwide";
+        // If specific zonal warehouses are selected, still auto-distribute but to selected ones
+        // If none selected, distribute to all zonal warehouses
+        productPayload.auto_distribute_to_zones = true;
+        break;
+      case "selective_zonal":
+        productPayload.warehouse_mapping_type = "zonal_with_fallback";
+        productPayload.auto_distribute_to_zones = false;
+        break;
+      case "central_only":
+        productPayload.warehouse_mapping_type = "central";
+        productPayload.auto_distribute_to_zones = false;
+        break;
+      case "zonal_only":
+        productPayload.warehouse_mapping_type = "zonal";
+        productPayload.auto_distribute_to_zones = false;
+        productPayload.enable_fallback = false;
+        break;
+      default:
+        productPayload.auto_distribute_to_zones = false;
+    }
+
+    // Add warehouse-specific fields for enhanced backend
+    productPayload.initial_stock = parseInt(productPayload.stock) || 100;
+    productPayload.zone_distribution_quantity = 50;
+
+    // Add variants data if enabled
+    if (hasVariants && variants.length > 0) {
+      productPayload.variants = variants.map(variant => ({
+        ...variant,
+        variant_price: parseFloat(variant.variant_price) || 0,
+        variant_old_price: parseFloat(variant.variant_old_price) || 0,
+        variant_stock: parseInt(variant.variant_stock) || 0,
+        variant_quantity: parseFloat(variant.variant_quantity) || 1,
+        shipping_amount: parseFloat(variant.shipping_amount) || 0
+      }));
+      productPayload.variant_images = variantImages;
     }
 
     if (
@@ -769,18 +963,16 @@ const ProductsPage = () => {
           alert(result.error || "Failed to update product");
         }
       } else {
-        // Add new product
-        // Pass displayImageFile directly to addProduct, backend will handle upload
-        const result = await addProduct(
-          productPayload,
-          imageFiles,
-          videoFile,
-          displayImageFile
-        );
+        // Add new product with enhanced warehouse management
+        const result = await createProductWithWarehouse(productPayload);
 
         if (result.success) {
-          // Add to local state
-          setProducts([...products, result.product]);
+          console.log(
+            "Product created with warehouse assignments:",
+            result.warehouse_assignments
+          );
+          // Refresh products list to show the new product
+          fetchProducts();
           setModalOpen(false);
         } else {
           alert(result.error || "Failed to add product");
@@ -803,6 +995,52 @@ const ProductsPage = () => {
   const openVariantsModal = (product) => {
     setSelectedProductForVariants(product);
     setVariantsModalOpen(true);
+  };
+
+  // Variants helper functions
+  const addNewVariant = () => {
+    const newVariant = { ...defaultVariant, id: Date.now() };
+    setVariants([...variants, newVariant]);
+  };
+
+  const updateVariant = (index, field, value) => {
+    const updatedVariants = [...variants];
+    updatedVariants[index] = { ...updatedVariants[index], [field]: value };
+    
+    // Auto-calculate discount if price fields change
+    if (field === 'variant_price' || field === 'variant_old_price') {
+      const variant = updatedVariants[index];
+      if (variant.variant_old_price && variant.variant_price && variant.variant_old_price > 0) {
+        const discountPercent = Math.round(
+          ((variant.variant_old_price - variant.variant_price) / variant.variant_old_price) * 100
+        );
+        updatedVariants[index].variant_discount = Math.max(0, discountPercent);
+      }
+    }
+    
+    setVariants(updatedVariants);
+  };
+
+  const removeVariant = (index) => {
+    const updatedVariants = variants.filter((_, i) => i !== index);
+    setVariants(updatedVariants);
+    
+    // Remove variant image if exists
+    const newVariantImages = { ...variantImages };
+    delete newVariantImages[index];
+    setVariantImages(newVariantImages);
+  };
+
+  const setVariantImage = (index, file) => {
+    setVariantImages({ ...variantImages, [index]: file });
+  };
+
+  const setDefaultVariant = (index) => {
+    const updatedVariants = variants.map((variant, i) => ({
+      ...variant,
+      is_default: i === index
+    }));
+    setVariants(updatedVariants);
   };
 
   return (
@@ -1041,6 +1279,12 @@ const ProductsPage = () => {
                   className="text-gray-800 dark:text-gray-200 font-semibold"
                 >
                   Old Price
+                </th>
+                <th
+                  style={{ textAlign: "right", padding: "12px 8px" }}
+                  className="text-gray-800 dark:text-gray-200 font-semibold"
+                >
+                  Shipping
                 </th>
                 <th
                   style={{ textAlign: "center", padding: "12px 8px" }}
@@ -1354,6 +1598,13 @@ const ProductsPage = () => {
                       {product.old_price
                         ? formatIndianPrice(product.old_price)
                         : "-"}
+                    </div>
+                  </td>
+                  <td style={{ textAlign: "right", padding: "8px" }}>
+                    <div className="text-sm text-blue-600 dark:text-blue-400">
+                      {product.shipping_amount
+                        ? formatIndianPrice(product.shipping_amount)
+                        : "Free"}
                     </div>
                   </td>
                   <td style={{ textAlign: "center", padding: "8px" }}>
@@ -1779,17 +2030,19 @@ const ProductsPage = () => {
             placeholder="Enter shipping amount"
             value={newProduct.shipping_amount || 0}
             onChange={(value) =>
-              setNewProduct({ ...newProduct, shipping_amount: value })
+              setNewProduct({ ...newProduct, shipping_amount: value || 0 })
             }
             min={0}
             rightSection="₹"
+            precision={2}
+            step={0.01}
           />
 
           {/* Discount Calculation Helper */}
           {(newProduct.price > 0 ||
             newProduct.old_price > 0 ||
             newProduct.discount > 0) && (
-            <div className="p-5 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg border border-blue-200 dark:border-blue-700 shadow-sm">
+            <div className="p-5 bg-linear-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg border border-blue-200 dark:border-blue-700 shadow-sm">
               <Text
                 size="sm"
                 weight={500}
@@ -1857,7 +2110,7 @@ const ProductsPage = () => {
             {newProduct.category_id ||
             newProduct.subcategory_id ||
             newProduct.group_id ? (
-              <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg border border-green-200 dark:border-green-700">
+              <div className="p-4 bg-linear-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg border border-green-200 dark:border-green-700">
                 <div className="flex items-center justify-between mb-3">
                   <Text
                     size="sm"
@@ -1989,14 +2242,14 @@ const ProductsPage = () => {
                                 </Text>
                                 <div className="space-y-2 pl-3">
                                   <div className="flex items-center gap-3 text-sm">
-                                    <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
+                                    <div className="w-2 h-2 bg-blue-500 rounded-full shrink-0"></div>
                                     <Text className="text-blue-600 dark:text-blue-400">
                                       {relatedCategory?.name ||
                                         "Unknown Category"}
                                     </Text>
                                   </div>
                                   <div className="flex items-center gap-3 text-sm pl-5">
-                                    <div className="w-2 h-2 bg-indigo-500 rounded-full flex-shrink-0"></div>
+                                    <div className="w-2 h-2 bg-indigo-500 rounded-full shrink-0"></div>
                                     <Text className="text-indigo-600 dark:text-indigo-400">
                                       {relatedSubcategory?.name ||
                                         "Unknown Subcategory"}
@@ -2403,6 +2656,1120 @@ const ProductsPage = () => {
             }
             color="orange"
           />
+
+          {/* Warehouse Distribution Flow */}
+          <Divider
+            label="📦 Warehouse & Stock Management"
+            labelPosition="center"
+            my="md"
+          />
+
+          {/* Warehouse Status & Refresh */}
+          <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-900/20 rounded-lg border border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between mb-2">
+              <Text size="sm" weight={500}>
+                🏢 Available Warehouses (
+                {centralWarehouses.length + zonalWarehouses.length} total)
+              </Text>
+              <Button
+                variant="subtle"
+                size="xs"
+                onClick={fetchWarehousesData}
+                loading={warehousesLoading}
+                leftIcon={<span>🔄</span>}
+              >
+                Refresh
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 gap-4 text-xs">
+              <div>
+                <Text weight={500} className="mb-1 flex items-center gap-1">
+                  <span className="w-3 h-3 bg-blue-500 rounded-full"></span>
+                  Central ({centralWarehouses.length})
+                </Text>
+                <div className="text-gray-600 dark:text-gray-400">
+                  {centralWarehouses.length === 0
+                    ? "No central warehouses available"
+                    : `${centralWarehouses.map((w) => w.name).join(", ")}`}
+                </div>
+              </div>
+              <div>
+                <Text weight={500} className="mb-1 flex items-center gap-1">
+                  <span className="w-3 h-3 bg-green-500 rounded-full"></span>
+                  Zonal ({zonalWarehouses.length})
+                </Text>
+                <div className="text-gray-600 dark:text-gray-400">
+                  {zonalWarehouses.length === 0
+                    ? "No zonal warehouses available"
+                    : `${zonalWarehouses
+                        .slice(0, 3)
+                        .map((w) => w.name)
+                        .join(", ")}${
+                        zonalWarehouses.length > 3
+                          ? ` +${zonalWarehouses.length - 3} more`
+                          : ""
+                      }`}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Flow Explanation */}
+          <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
+            <Text
+              size="sm"
+              weight={600}
+              className="mb-2 text-blue-800 dark:text-blue-300"
+            >
+              🔄 Product Distribution Flow
+            </Text>
+            <div className="flex items-center gap-2 text-sm text-blue-700 dark:text-blue-400">
+              <span className="bg-blue-100 dark:bg-blue-800 px-2 py-1 rounded">
+                1. Add Product
+              </span>
+              <span>→</span>
+              <span className="bg-green-100 dark:bg-green-800 px-2 py-1 rounded">
+                2. Auto Central
+              </span>
+              <span>→</span>
+              <span className="bg-purple-100 dark:bg-purple-800 px-2 py-1 rounded">
+                3. Distribute to Zones
+              </span>
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <Text size="sm" weight={500} className="mb-2">
+              🏢 Product Warehouse Strategy
+            </Text>
+            <Text size="xs" color="dimmed" className="mb-4">
+              Choose how this product should be distributed across warehouses
+              with intelligent fallback
+            </Text>
+
+            <Radio.Group
+              value={newProduct.warehouse_mapping_type}
+              onChange={(value) => {
+                const updatedProduct = {
+                  ...newProduct,
+                  warehouse_mapping_type: value,
+                  // Clear selections when changing strategy
+                  primary_warehouses: [],
+                  fallback_warehouses: [],
+                  assigned_warehouse_ids: [],
+                };
+                setNewProduct(updatedProduct);
+              }}
+            >
+              <div className="space-y-4">
+                <div className="p-3 border border-green-200 dark:border-green-700 rounded-lg bg-green-50 dark:bg-green-900/20">
+                  <Radio
+                    value="auto_central_to_zonal"
+                    label={
+                      <div>
+                        <Text size="sm" weight={500}>
+                          🚀 Auto Nationwide Distribution (Recommended)
+                        </Text>
+                        <Text size="xs" color="dimmed" className="mt-1">
+                          Product distributed to all zonal warehouses → Smart
+                          fallback (Division → Zonal)
+                        </Text>
+                      </div>
+                    }
+                    color="green"
+                  />
+                </div>
+
+                <div className="p-3 border border-blue-200 dark:border-blue-700 rounded-lg">
+                  <Radio
+                    value="selective_zonal"
+                    label={
+                      <div>
+                        <Text size="sm" weight={500}>
+                          🏪 Selective Zonal Distribution
+                        </Text>
+                        <Text size="xs" color="dimmed" className="mt-1">
+                          Choose specific zonal warehouses → Division warehouses
+                          as fallback when out of stock
+                        </Text>
+                      </div>
+                    }
+                    color="blue"
+                  />
+                </div>
+
+                <div className="p-3 border border-purple-200 dark:border-purple-700 rounded-lg">
+                  <Radio
+                    value="zonal_only"
+                    label={
+                      <div>
+                        <Text size="sm" weight={500}>
+                          🏪 Zonal Warehouses Only (No Fallback)
+                        </Text>
+                        <Text size="xs" color="dimmed" className="mt-1">
+                          Distribute to zones only → NO central fallback →
+                          Regional products only
+                        </Text>
+                      </div>
+                    }
+                    color="purple"
+                  />
+                </div>
+              </div>
+            </Radio.Group>
+          </div>
+
+          {/* Auto Central to Zonal Distribution */}
+          {newProduct.warehouse_mapping_type === "auto_central_to_zonal" && (
+            <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-700">
+              <div className="flex items-center gap-2 mb-3">
+                <Text size="sm" weight={600} color="green">
+                  🚀 Automatic Distribution Enabled
+                </Text>
+              </div>
+              <div className="space-y-2 text-sm text-green-700 dark:text-green-400">
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 bg-green-100 dark:bg-green-800 rounded-full flex items-center justify-center text-xs font-bold">
+                    1
+                  </span>
+                  <span>
+                    Product will be automatically added to central warehouse
+                    with <strong>{newProduct.stock || 100}</strong> units
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 bg-green-100 dark:bg-green-800 rounded-full flex items-center justify-center text-xs font-bold">
+                    2
+                  </span>
+                  <span>
+                    System will auto-distribute <strong>50 units each</strong>{" "}
+                    to{" "}
+                    {newProduct.primary_warehouses &&
+                    newProduct.primary_warehouses.length > 0
+                      ? `selected ${
+                          newProduct.primary_warehouses.length
+                        } zonal warehouse${
+                          newProduct.primary_warehouses.length > 1 ? "s" : ""
+                        }`
+                      : `all ${zonalWarehouses.length} zonal warehouses`}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-6 h-6 bg-green-100 dark:bg-green-800 rounded-full flex items-center justify-center text-xs font-bold">
+                    3
+                  </span>
+                  <span>
+                    Smart fallback: Zonal out of stock → Central → Other zones
+                    if needed
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-3 pt-3 border-t border-green-200 dark:border-green-700">
+                <div className="mb-3">
+                  <MultiSelect
+                    label="🎯 Select Target Zonal Warehouses"
+                    placeholder={
+                      warehousesLoading
+                        ? "Loading zonal warehouses..."
+                        : zonalWarehouses.length === 0
+                        ? "No zonal warehouses available"
+                        : "Choose which zonal warehouses to auto-distribute to"
+                    }
+                    data={zonalWarehouses.map((w) => ({
+                      value: String(w.id),
+                      label: `${w.parent_warehouse_id ? "└─ " : ""}${
+                        w.name
+                      } - ${
+                        w.parent_warehouse_id
+                          ? `Under: ${
+                              centralWarehouses.find(
+                                (c) => c.id === w.parent_warehouse_id
+                              )?.name || "Unknown"
+                            }`
+                          : "Independent"
+                      }`,
+                    }))}
+                    value={(newProduct.primary_warehouses || []).map(id => String(id))}
+                    onChange={(value) =>
+                      setNewProduct({
+                        ...newProduct,
+                        primary_warehouses: value || [],
+                      })
+                    }
+                    disabled={warehousesLoading}
+                    searchable
+                    clearable
+                    maxDropdownHeight={200}
+                    description="Select specific zonal warehouses for automatic distribution (leave empty to distribute to all)"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 text-xs">
+                  <div>
+                    <Text weight={500} className="mb-1">
+                      📍 Selected Zonal Warehouses:
+                    </Text>
+                    <div className="space-y-1">
+                      {newProduct.primary_warehouses &&
+                      newProduct.primary_warehouses.length > 0
+                        ? zonalWarehouses
+                            .filter((w) =>
+                              newProduct.primary_warehouses.includes(
+                                w.id.toString()
+                              )
+                            )
+                            .slice(0, 3)
+                            .map((w) => (
+                              <div
+                                key={w.id}
+                                className="flex items-center gap-1"
+                              >
+                                <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                                <span>{w.name}</span>
+                              </div>
+                            ))
+                        : zonalWarehouses.slice(0, 3).map((w) => (
+                            <div key={w.id} className="flex items-center gap-1">
+                              <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                              <span>{w.name}</span>
+                            </div>
+                          ))}
+                      {(newProduct.primary_warehouses &&
+                      newProduct.primary_warehouses.length > 0
+                        ? zonalWarehouses.filter((w) =>
+                            newProduct.primary_warehouses.includes(
+                              w.id.toString()
+                            )
+                          ).length
+                        : zonalWarehouses.length) > 3 && (
+                        <Text size="xs" color="dimmed">
+                          ...and{" "}
+                          {(newProduct.primary_warehouses &&
+                          newProduct.primary_warehouses.length > 0
+                            ? zonalWarehouses.filter((w) =>
+                                newProduct.primary_warehouses.includes(
+                                  w.id.toString()
+                                )
+                              ).length
+                            : zonalWarehouses.length) - 3}{" "}
+                          more
+                        </Text>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <Text weight={500} className="mb-1">
+                      🏢 Central Warehouses:
+                    </Text>
+                    <div className="space-y-1">
+                      {centralWarehouses.slice(0, 3).map((w) => (
+                        <div key={w.id} className="flex items-center gap-1">
+                          <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                          <span>{w.name}</span>
+                        </div>
+                      ))}
+                      {centralWarehouses.length > 3 && (
+                        <Text size="xs" color="dimmed">
+                          ...and {centralWarehouses.length - 3} more
+                        </Text>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Selective Zonal with Central Fallback */}
+          {newProduct.warehouse_mapping_type === "selective_zonal" && (
+            <>
+              <MultiSelect
+                label="� Select Zonal Warehouses"
+                placeholder={
+                  warehousesLoading
+                    ? "Loading zonal warehouses..."
+                    : zonalWarehouses.length === 0
+                    ? "No zonal warehouses available"
+                    : "Choose specific zonal warehouses for this product"
+                }
+                data={zonalWarehouses.map((w) => {
+                  const parentWarehouse = centralWarehouses.find(
+                    (c) => c.id === w.parent_warehouse_id
+                  );
+                  return {
+                    value: String(w.id),
+                    label: parentWarehouse
+                      ? `└─ ${w.name} - Under: ${parentWarehouse.name}${
+                          w.zone_name ? ` (Zone: ${w.zone_name})` : ""
+                        }`
+                      : `${w.name}${
+                          w.zone_name ? ` - Zone: ${w.zone_name}` : ""
+                        }`,
+                  };
+                })}
+                value={(newProduct.primary_warehouses || []).map(id => String(id))}
+                onChange={(value) =>
+                  setNewProduct({ ...newProduct, primary_warehouses: value || [] })
+                }
+                disabled={warehousesLoading}
+                searchable
+                clearable
+                maxDropdownHeight={200}
+                description="Select which zonal warehouses should stock this product"
+              />
+
+              <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
+                <div className="flex items-center justify-between mb-2">
+                  <Text size="sm" weight={500}>
+                    🔄 Central Warehouse Fallback
+                  </Text>
+                  <Switch
+                    checked={newProduct.enable_fallback}
+                    onChange={(e) =>
+                      setNewProduct({
+                        ...newProduct,
+                        enable_fallback: e.currentTarget.checked,
+                      })
+                    }
+                    color="blue"
+                  />
+                </div>
+                <Text size="xs" color="dimmed">
+                  When enabled, if selected zonal warehouses run out of stock,
+                  customers can order from central warehouse
+                </Text>
+              </div>
+
+              {newProduct.enable_fallback && (
+                <MultiSelect
+                  label="🏢 Central Fallback Warehouses"
+                  placeholder={
+                    warehousesLoading
+                      ? "Loading central warehouses..."
+                      : centralWarehouses.length === 0
+                      ? "No central warehouses available"
+                      : "Select central warehouses for fallback"
+                  }
+                  data={centralWarehouses.map((w) => {
+                    const children = zonalWarehouses.filter(
+                      (z) => z.parent_warehouse_id === w.id
+                    ).length;
+                    return {
+                      value: String(w.id),
+                      label: `🏢 ${w.name} (${children} children)`,
+                    };
+                  })}
+                  value={(newProduct.fallback_warehouses || []).map(id => String(id))}
+                  onChange={(value) =>
+                    setNewProduct({ ...newProduct, fallback_warehouses: value || [] })
+                  }
+                  disabled={warehousesLoading}
+                  searchable
+                  clearable
+                  maxDropdownHeight={200}
+                  description="These warehouses will serve as backup when zonal warehouses are out of stock"
+                />
+              )}
+            </>
+          )}
+
+          {/* Central Only */}
+          {newProduct.warehouse_mapping_type === "central_only" && (
+            <>
+              <MultiSelect
+                label="🏢 Select Central Warehouses"
+                placeholder={
+                  warehousesLoading
+                    ? "Loading central warehouses..."
+                    : centralWarehouses.length === 0
+                    ? "No central warehouses available"
+                    : "Choose central warehouses for this product"
+                }
+                data={centralWarehouses.map((w) => ({
+                  value: String(w.id),
+                  label: `🏢 ${w.name} (${
+                    zonalWarehouses.filter(
+                      (z) => z.parent_warehouse_id === w.id
+                    ).length
+                  } children)`,
+                }))}
+                value={(newProduct.assigned_warehouse_ids || []).map(id => String(id))}
+                onChange={(value) =>
+                  setNewProduct({
+                    ...newProduct,
+                    assigned_warehouse_ids: value || [],
+                  })
+                }
+                disabled={warehousesLoading}
+                searchable
+                clearable
+                maxDropdownHeight={200}
+                description="Select which central warehouses should stock this product"
+              />
+
+              <div className="mb-4 p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-700">
+                <Text size="sm" weight={600} color="orange" className="mb-3">
+                  🏢 Central Warehouse Only Configuration
+                </Text>
+                <div className="space-y-2 text-sm text-orange-700 dark:text-orange-400">
+                  <div className="flex items-center gap-2">
+                    <span>📦</span>
+                    <span>
+                      Product will be stocked only in selected central
+                      warehouses
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span>🚫</span>
+                    <span>
+                      No zonal distribution - customers order directly from
+                      central
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span>🎯</span>
+                    <span>
+                      Best for: Bulk items, special products, or centralized
+                      inventory
+                    </span>
+                  </div>
+                </div>
+
+                {newProduct.assigned_warehouse_ids &&
+                  newProduct.assigned_warehouse_ids.length > 0 && (
+                    <div className="mt-3 p-2 bg-orange-100 dark:bg-orange-800/30 rounded">
+                      <Text size="xs" weight={500}>
+                        Selected Central Warehouses (
+                        {newProduct.assigned_warehouse_ids.length}):
+                      </Text>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {centralWarehouses
+                          .filter((w) =>
+                            newProduct.assigned_warehouse_ids.includes(
+                              w.id.toString()
+                            )
+                          )
+                          .map((w) => (
+                            <Badge
+                              key={w.id}
+                              variant="outline"
+                              color="orange"
+                              size="sm"
+                            >
+                              {w.name}
+                            </Badge>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+              </div>
+            </>
+          )}
+
+          {/* Zonal Only (No Fallback) */}
+          {newProduct.warehouse_mapping_type === "zonal_only" && (
+            <>
+              <div className="mb-4 p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-700">
+                <Text size="sm" weight={600} color="purple" className="mb-2">
+                  🏪 Zonal Warehouses Only (No Fallback)
+                </Text>
+                <Text size="xs" color="dimmed" className="mb-3">
+                  Product will be distributed only to zonal warehouses. When out
+                  of stock, customers cannot order from central warehouse.
+                </Text>
+                <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded border border-red-200 dark:border-red-700">
+                  <Text size="xs" color="red" weight={500}>
+                    ⚠️ Warning: No fallback to central warehouse. Product may
+                    become unavailable in some regions.
+                  </Text>
+                </div>
+              </div>
+
+              <MultiSelect
+                label="🏪 Select Zonal Warehouses"
+                placeholder={
+                  warehousesLoading
+                    ? "Loading zonal warehouses..."
+                    : zonalWarehouses.length === 0
+                    ? "No zonal warehouses available"
+                    : "Choose zonal warehouses (no central fallback)"
+                }
+                data={zonalWarehouses.map((w) => ({
+                  value: String(w.id),
+                  label: `${w.parent_warehouse_id ? "└─ " : ""}${w.name} - ${
+                    w.parent_warehouse_id
+                      ? `Under: ${
+                          centralWarehouses.find(
+                            (c) => c.id === w.parent_warehouse_id
+                          )?.name || "Unknown"
+                        }`
+                      : "Independent"
+                  }`,
+                }))}
+                value={(newProduct.primary_warehouses || []).map(id => String(id))}
+                onChange={(value) =>
+                  setNewProduct({ ...newProduct, primary_warehouses: value || [] })
+                }
+                disabled={warehousesLoading}
+                searchable
+                clearable
+                maxDropdownHeight={200}
+                description="Regional products only - no central warehouse fallback"
+              />
+            </>
+          )}
+
+          {/* Stock Distribution Settings */}
+          {(newProduct.warehouse_mapping_type === "auto_central_to_zonal" ||
+            newProduct.warehouse_mapping_type === "selective_zonal") && (
+            <div className="mb-4">
+              <Text size="sm" weight={500} className="mb-3">
+                📊 Stock Distribution Settings
+              </Text>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <NumberInput
+                  label="Initial Central Stock"
+                  placeholder="Total stock for central warehouse"
+                  value={newProduct.stock}
+                  onChange={(value) =>
+                    setNewProduct({ ...newProduct, stock: value })
+                  }
+                  min={1}
+                  description="Total units to add to central warehouse first"
+                />
+                <NumberInput
+                  label="Per-Zone Distribution"
+                  placeholder="Units per zonal warehouse"
+                  value={50}
+                  min={1}
+                  max={newProduct.stock}
+                  description="Units to distribute to each zonal warehouse"
+                  disabled={
+                    newProduct.warehouse_mapping_type ===
+                    "auto_central_to_zonal"
+                  }
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Configuration Summary */}
+          {newProduct.warehouse_mapping_type && (
+            <div className="mb-4">
+              <Text size="sm" weight={500} className="mb-2">
+                📋 Configuration Summary
+              </Text>
+
+              {newProduct.warehouse_mapping_type ===
+                "auto_central_to_zonal" && (
+                <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-700">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Text size="sm" color="green" weight={600}>
+                      🚀 Auto Distribution Active
+                    </Text>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 text-xs">
+                    <div>
+                      <Text weight={500}>Initial Setup:</Text>
+                      <Text color="dimmed">
+                        • Central: {newProduct.stock || 100} units
+                      </Text>
+                      <Text color="dimmed">
+                        • Zonal:{" "}
+                        {newProduct.primary_warehouses &&
+                        newProduct.primary_warehouses.length > 0
+                          ? `${
+                              newProduct.primary_warehouses.length
+                            } selected warehouse${
+                              newProduct.primary_warehouses.length > 1
+                                ? "s"
+                                : ""
+                            }`
+                          : `${zonalWarehouses.length} warehouses`}{" "}
+                        × 50 units each
+                      </Text>
+                    </div>
+                    <div>
+                      <Text weight={500}>Fallback Logic:</Text>
+                      <Text color="dimmed">• Zonal → Central → Cross-zone</Text>
+                      <Text color="dimmed">• Smart inventory management</Text>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {newProduct.warehouse_mapping_type === "selective_zonal" && (
+                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
+                  <Text size="sm" color="blue" weight={600}>
+                    🎯 Selective Zonal Configuration
+                  </Text>
+                  <div className="mt-2 space-y-1 text-xs">
+                    <Text color="dimmed">
+                      • Selected Zones:{" "}
+                      {(newProduct.primary_warehouses || []).length}
+                    </Text>
+                    <Text color="dimmed">
+                      • Central Fallback:{" "}
+                      {newProduct.enable_fallback
+                        ? "✅ Enabled"
+                        : "❌ Disabled"}
+                    </Text>
+                    {newProduct.enable_fallback && (
+                      <Text color="dimmed">
+                        • Fallback Warehouses:{" "}
+                        {(newProduct.fallback_warehouses || []).length}
+                      </Text>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {newProduct.warehouse_mapping_type === "central_only" && (
+                <div className="p-3 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-700">
+                  <Text size="sm" color="orange" weight={600}>
+                    🏢 Central Only Configuration
+                  </Text>
+                  <div className="mt-2 text-xs">
+                    <Text color="dimmed">
+                      • Selected Central Warehouses:{" "}
+                      {(newProduct.assigned_warehouse_ids || []).length} of{" "}
+                      {centralWarehouses.length}
+                    </Text>
+                    <Text color="dimmed">• Zonal Access: Not available</Text>
+                    <Text color="dimmed">• Fallback: Not needed</Text>
+                    {(newProduct.assigned_warehouse_ids || []).length > 0 && (
+                      <div className="mt-1">
+                        <Text color="dimmed">• Warehouses: </Text>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {(newProduct.assigned_warehouse_ids || []).map(
+                            (warehouseId) => {
+                              const warehouse = centralWarehouses.find(
+                                (w) => w.id.toString() === warehouseId
+                              );
+                              return (
+                                warehouse && (
+                                  <Badge
+                                    key={warehouse.id}
+                                    variant="outline"
+                                    color="orange"
+                                    size="xs"
+                                  >
+                                    {warehouse.name}
+                                  </Badge>
+                                )
+                              );
+                            }
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {newProduct.warehouse_mapping_type === "zonal_only" && (
+                <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-700">
+                  <Text size="sm" color="purple" weight={600}>
+                    🏪 Zonal Only Configuration
+                  </Text>
+                  <div className="mt-2 text-xs">
+                    <Text color="dimmed">
+                      • Distribution: Selected zonal warehouses (
+                      {(newProduct.primary_warehouses || []).length})
+                    </Text>
+                    <Text color="dimmed">• Central Fallback: ❌ Disabled</Text>
+                    <Text color="red" weight={500}>
+                      • Risk: May become unavailable when zones are out of stock
+                    </Text>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Selected Warehouses Preview */}
+          {(newProduct.warehouse_mapping_type === "selective_zonal" ||
+            newProduct.warehouse_mapping_type === "zonal_only") &&
+            (newProduct.primary_warehouses || []).length > 0 && (
+              <div className="mb-4">
+                <Text size="sm" weight={500} className="mb-3">
+                  📍 Selected Warehouses Preview
+                </Text>
+
+                <div className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border">
+                  <div className="mb-3">
+                    <Text
+                      size="sm"
+                      weight={500}
+                      className="mb-2 flex items-center gap-2"
+                    >
+                      <span className="w-3 h-3 bg-blue-500 rounded-full"></span>
+                      Primary Warehouses (
+                      {(newProduct.primary_warehouses || []).length})
+                    </Text>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {(newProduct.primary_warehouses || []).map(
+                        (warehouseId) => {
+                          const warehouse = zonalWarehouses.find(
+                            (w) => w.id.toString() === warehouseId
+                          );
+                          return (
+                            <div
+                              key={warehouseId}
+                              className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded"
+                            >
+                              <span className="text-blue-600">🏪</span>
+                              <div className="flex-1">
+                                <Text size="xs" weight={500}>
+                                  {warehouse?.name || warehouseId}
+                                </Text>
+                                <Text size="xs" color="dimmed">
+                                  Zone: {warehouse?.zone_name || "N/A"}
+                                </Text>
+                              </div>
+                            </div>
+                          );
+                        }
+                      )}
+                    </div>
+                  </div>
+
+                  {newProduct.warehouse_mapping_type === "selective_zonal" &&
+                    newProduct.enable_fallback &&
+                    (newProduct.fallback_warehouses || []).length > 0 && (
+                      <div>
+                        <Text
+                          size="sm"
+                          weight={500}
+                          className="mb-2 flex items-center gap-2"
+                        >
+                          <span className="w-3 h-3 bg-orange-500 rounded-full"></span>
+                          Fallback Warehouses (
+                          {(newProduct.fallback_warehouses || []).length})
+                        </Text>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {(newProduct.fallback_warehouses || []).map(
+                            (warehouseId) => {
+                              const warehouse = centralWarehouses.find(
+                                (w) => w.id.toString() === warehouseId
+                              );
+                              return (
+                                <div
+                                  key={warehouseId}
+                                  className="flex items-center gap-2 p-2 bg-orange-50 dark:bg-orange-900/20 rounded"
+                                >
+                                  <span className="text-orange-600">🏢</span>
+                                  <div className="flex-1">
+                                    <Text size="xs" weight={500}>
+                                      {warehouse?.name || warehouseId}
+                                    </Text>
+                                    <Text size="xs" color="dimmed">
+                                      Central Warehouse
+                                    </Text>
+                                  </div>
+                                </div>
+                              );
+                            }
+                          )}
+                        </div>
+                      </div>
+                    )}
+                </div>
+              </div>
+            )}
+
+          {/* Debug Information */}
+          <div className="mb-4 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs">
+            <Text size="xs" weight={500} className="mb-1">
+              Debug Info:
+            </Text>
+            <Text size="xs" color="dimmed">
+              Strategy: {newProduct.warehouse_mapping_type || "not set"} |
+              Warehouses Loading: {warehousesLoading ? "Yes" : "No"} | Central:{" "}
+              {centralWarehouses.length} | Zonal: {zonalWarehouses.length} |
+              Selected Primary: {(newProduct.primary_warehouses || []).length} |
+              Selected Fallback: {(newProduct.fallback_warehouses || []).length}{" "}
+              | Fallback Enabled: {newProduct.enable_fallback ? "Yes" : "No"} |
+              Stock: {newProduct.stock || 100}
+            </Text>
+          </div>
+
+          <Textarea
+            label="Warehouse Notes"
+            placeholder="Special notes about warehouse assignment (optional)"
+            value={newProduct.warehouse_notes || ""}
+            onChange={(e) =>
+              setNewProduct({ ...newProduct, warehouse_notes: e.target.value })
+            }
+            minRows={2}
+          />
+
+          {/* Product Variants Section */}
+          <Divider
+            label="🎨 Product Variants"
+            labelPosition="center"
+            my="md"
+          />
+
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <Text size="sm" weight={500}>
+                  🎨 Product Variants Management
+                </Text>
+                <Text size="xs" color="dimmed">
+                  Add multiple variants with different sizes, prices, and images
+                </Text>
+              </div>
+              <Switch
+                label="Enable Variants"
+                checked={hasVariants}
+                onChange={(e) => {
+                  setHasVariants(e.currentTarget.checked);
+                  if (!e.currentTarget.checked) {
+                    setVariants([]);
+                    setVariantImages({});
+                  }
+                }}
+                color="purple"
+              />
+            </div>
+
+            {hasVariants && (
+              <div className="space-y-4">
+                {/* Variants List */}
+                {variants.length > 0 && (
+                  <div className="space-y-3">
+                    {variants.map((variant, index) => (
+                      <div
+                        key={variant.id || index}
+                        className="p-4 border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-800/50"
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <Text size="sm" weight={500}>
+                            Variant {index + 1}
+                            {variant.is_default && (
+                              <Badge color="green" size="xs" ml={8}>
+                                Default
+                              </Badge>
+                            )}
+                          </Text>
+                          <div className="flex gap-2">
+                            <Button
+                              size="xs"
+                              variant="light"
+                              color={variant.is_default ? "gray" : "green"}
+                              onClick={() => setDefaultVariant(index)}
+                              disabled={variant.is_default}
+                            >
+                              {variant.is_default ? "Default" : "Set Default"}
+                            </Button>
+                            <Button
+                              size="xs"
+                              variant="light"
+                              color="red"
+                              onClick={() => removeVariant(index)}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          <TextInput
+                            label="Variant Name"
+                            placeholder="e.g., 10 KG, 5 KG, 1 Liter"
+                            value={variant.variant_name}
+                            onChange={(e) =>
+                              updateVariant(index, "variant_name", e.target.value)
+                            }
+                            required
+                          />
+
+                          <NumberInput
+                            label="Variant Price (₹)"
+                            placeholder="Enter variant price"
+                            value={variant.variant_price}
+                            onChange={(value) =>
+                              updateVariant(index, "variant_price", value)
+                            }
+                            min={0}
+                            required
+                          />
+
+                          <NumberInput
+                            label="Old Price (₹)"
+                            placeholder="Enter old price"
+                            value={variant.variant_old_price}
+                            onChange={(value) =>
+                              updateVariant(index, "variant_old_price", value)
+                            }
+                            min={0}
+                          />
+
+                          <NumberInput
+                            label="Stock Quantity"
+                            placeholder="Enter stock"
+                            value={variant.variant_stock}
+                            onChange={(value) =>
+                              updateVariant(index, "variant_stock", value)
+                            }
+                            min={0}
+                            required
+                          />
+
+                          <TextInput
+                            label="Weight/Size"
+                            placeholder="e.g., 10kg, 500ml"
+                            value={variant.variant_weight}
+                            onChange={(e) =>
+                              updateVariant(index, "variant_weight", e.target.value)
+                            }
+                          />
+
+                          <Select
+                            label="Unit"
+                            placeholder="Select unit"
+                            data={[
+                              { value: "kg", label: "Kilogram (kg)" },
+                              { value: "g", label: "Gram (g)" },
+                              { value: "l", label: "Litre (l)" },
+                              { value: "ml", label: "Millilitre (ml)" },
+                              { value: "pcs", label: "Pieces (pcs)" },
+                              { value: "pack", label: "Pack" },
+                              { value: "box", label: "Box" },
+                              { value: "bottle", label: "Bottle" },
+                            ]}
+                            value={variant.variant_unit}
+                            onChange={(value) =>
+                              updateVariant(index, "variant_unit", value)
+                            }
+                          />
+
+                          <NumberInput
+                            label="Shipping Amount (₹)"
+                            placeholder="Variant shipping cost"
+                            value={variant.shipping_amount}
+                            onChange={(value) =>
+                              updateVariant(index, "shipping_amount", value)
+                            }
+                            min={0}
+                          />
+
+                          <NumberInput
+                            label="Quantity"
+                            placeholder="Quantity per unit"
+                            value={variant.variant_quantity}
+                            onChange={(value) =>
+                              updateVariant(index, "variant_quantity", value)
+                            }
+                            min={0.1}
+                            step={0.1}
+                            precision={1}
+                          />
+
+                          <FileInput
+                            label="Variant Image"
+                            placeholder="Upload variant image"
+                            accept="image/*"
+                            icon={<FaUpload size={14} />}
+                            onChange={(file) => setVariantImage(index, file)}
+                            value={variantImages[index] || null}
+                          />
+                        </div>
+
+                        <div className="mt-4">
+                          <Textarea
+                            label="Variant Features"
+                            placeholder="Special features for this variant"
+                            value={variant.variant_features}
+                            onChange={(e) =>
+                              updateVariant(index, "variant_features", e.target.value)
+                            }
+                            minRows={2}
+                          />
+                        </div>
+
+                        {/* Variant Pricing Summary */}
+                        {(variant.variant_price > 0 || variant.variant_old_price > 0) && (
+                          <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
+                            <Text size="xs" weight={500} className="mb-2">
+                              Pricing Summary:
+                            </Text>
+                            <div className="grid grid-cols-3 gap-4 text-xs">
+                              <div>
+                                <Text color="dimmed">Current Price:</Text>
+                                <Text weight={600}>₹{variant.variant_price || 0}</Text>
+                              </div>
+                              <div>
+                                <Text color="dimmed">Old Price:</Text>
+                                <Text weight={600}>₹{variant.variant_old_price || 0}</Text>
+                              </div>
+                              <div>
+                                <Text color="dimmed">Discount:</Text>
+                                <Text weight={600} color="green">
+                                  {variant.variant_discount || 0}%
+                                  {variant.variant_old_price && variant.variant_price
+                                    ? ` (₹${variant.variant_old_price - variant.variant_price} off)`
+                                    : ""}
+                                </Text>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add Variant Button */}
+                <Button
+                  variant="light"
+                  color="purple"
+                  leftIcon={<FaPlus />}
+                  onClick={addNewVariant}
+                  className="w-full"
+                >
+                  Add New Variant
+                </Button>
+
+                {/* Variants Summary */}
+                {variants.length > 0 && (
+                  <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-700">
+                    <Text size="sm" weight={500} className="mb-3">
+                      📊 Variants Summary
+                    </Text>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div>
+                        <Text color="dimmed">Total Variants:</Text>
+                        <Text weight={600}>{variants.length}</Text>
+                      </div>
+                      <div>
+                        <Text color="dimmed">Total Stock:</Text>
+                        <Text weight={600}>
+                          {variants.reduce((sum, v) => sum + (v.variant_stock || 0), 0)}
+                        </Text>
+                      </div>
+                      <div>
+                        <Text color="dimmed">Price Range:</Text>
+                        <Text weight={600}>
+                          ₹{Math.min(...variants.map(v => v.variant_price || 0))} - 
+                          ₹{Math.max(...variants.map(v => v.variant_price || 0))}
+                        </Text>
+                      </div>
+                      <div>
+                        <Text color="dimmed">Default Variant:</Text>
+                        <Text weight={600}>
+                          {variants.find(v => v.is_default)?.variant_name || "None"}
+                        </Text>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           <TextInput
             label="Category Name"

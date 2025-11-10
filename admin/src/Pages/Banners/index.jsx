@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   Card,
   Title,
@@ -14,9 +14,6 @@ import {
   Pagination,
   Select,
   FileInput,
-  Textarea,
-  Loader,
-  Notification,
 } from "@mantine/core";
 import {
   FaEdit,
@@ -28,15 +25,6 @@ import {
   FaUpload,
 } from "react-icons/fa";
 
-// Banner positions options
-const BANNER_POSITIONS = [
-  { value: "hero", label: "Hero Banner (Top)" },
-  { value: "featured", label: "Featured Section" },
-  { value: "sidebar", label: "Sidebar" },
-  { value: "promo", label: "Promotional Banner" },
-  { value: "category", label: "Category Banner" },
-];
-
 import { Link } from "react-router-dom";
 import {
   getAllBanners,
@@ -47,6 +35,7 @@ import {
   toggleMobileBannerStatus,
 } from "../../utils/supabaseApi";
 import { supabase } from "../../utils/supabase";
+import { notifications } from "@mantine/notifications";
 
 const BannersPage = () => {
   const [banners, setBanners] = useState([]);
@@ -63,34 +52,20 @@ const BannersPage = () => {
     is_mobile: false,
   });
   const [activePage, setActivePage] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [notification, setNotification] = useState({
-    visible: false,
-    message: "",
-    color: "",
-  });
   const itemsPerPage = 5;
 
   useEffect(() => {
     async function getBanners() {
-      setLoading(true);
       const { data: banners, error } = await supabase.from("banners").select();
       console.log(banners);
       if (error) {
-        setNotification({
-          visible: true,
-          message: error.message,
-          color: "red",
-        });
+        showNotification(error.message, "red");
       } else if (banners && banners.length > 0) {
         setBanners(banners);
       }
-      setLoading(false);
     }
     getBanners();
     const fetchBanners = async () => {
-      setLoading(true);
       try {
         const result = await getAllBanners();
         if (result.success) {
@@ -101,8 +76,6 @@ const BannersPage = () => {
       } catch (error) {
         console.error("Error fetching banners:", error);
         showNotification("Error loading banners", "red");
-      } finally {
-        setLoading(false);
       }
     };
 
@@ -111,11 +84,10 @@ const BannersPage = () => {
 
   // Show notification helper
   const showNotification = (message, color = "blue") => {
-    setNotification({ visible: true, message, color });
-    setTimeout(
-      () => setNotification({ visible: false, message: "", color: "" }),
-      4000
-    );
+    notifications.show({
+      message,
+      color,
+    });
   };
 
   // Filter banners based on search
@@ -166,7 +138,6 @@ const BannersPage = () => {
       return;
     }
 
-    setSaving(true);
     try {
       if (currentBanner) {
         // Update existing banner
@@ -206,14 +177,11 @@ const BannersPage = () => {
     } catch (error) {
       console.error("Error saving banner:", error);
       showNotification("Error saving banner", "red");
-    } finally {
-      setSaving(false);
     }
   };
 
   const handleDeleteBanner = async (id) => {
     if (window.confirm("Are you sure you want to delete this banner?")) {
-      setLoading(true);
       try {
         const result = await deleteBanner(id);
         if (result.success) {
@@ -225,8 +193,6 @@ const BannersPage = () => {
       } catch (error) {
         console.error("Error deleting banner:", error);
         showNotification("Error deleting banner", "red");
-      } finally {
-        setLoading(false);
       }
     }
   };
@@ -571,7 +537,7 @@ const BannersPage = () => {
       >
         {currentBanner && (
           <div className="flex flex-col gap-4">
-            <div className="aspect-[3/1] overflow-hidden rounded-md">
+            <div className="aspect-3/1 overflow-hidden rounded-md">
               <Image
                 src={currentBanner.image}
                 alt={currentBanner.title}

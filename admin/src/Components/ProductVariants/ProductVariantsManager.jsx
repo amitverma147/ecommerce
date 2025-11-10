@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Title, Button, Table, Modal, TextInput, NumberInput, Switch, Group, ActionIcon, LoadingOverlay, Select } from '@mantine/core';
-import { FaPlus, FaEdit, FaTrash } from 'react-icons/fa';
-import { supabaseAdmin } from '../../utils/supabase';
+import { Card, Title, Button, Table, Modal, TextInput, NumberInput, Switch, Group, ActionIcon, LoadingOverlay, Select, FileInput, Image } from '@mantine/core';
+import { FaPlus, FaEdit, FaTrash, FaImage } from 'react-icons/fa';
+import { apiCall } from '../../utils/api';
 
 const UNIT_OPTIONS = [
   { value: 'kg', label: 'Kilogram (kg)' },
@@ -17,6 +17,10 @@ const UNIT_OPTIONS = [
   { value: 'pouch', label: 'Pouch' }
 ];
 
+// CRITICAL: This component manages ONLY product variants
+// It should NEVER modify main product prices (price, old_price, discount)
+// PRICE ISOLATION: Variants have completely separate pricing: variant_price, variant_old_price, variant_discount
+// Main product pricing must remain untouched during all variant operations
 const ProductVariantsManager = ({ productId, productName }) => {
   const [variants, setVariants] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -32,7 +36,10 @@ const ProductVariantsManager = ({ productId, productName }) => {
     variant_unit: 'kg',
     shipping_amount: 0,
     is_default: false,
+    variant_image_url: '',
   });
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
   const [weightValue, setWeightValue] = useState('');
   const [selectedUnit, setSelectedUnit] = useState('kg');
 
@@ -45,18 +52,33 @@ const ProductVariantsManager = ({ productId, productName }) => {
   const fetchVariants = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabaseAdmin
-        .from('product_variants')
-        .select('*')
-        .eq('product_id', productId)
-        .order('variant_price', { ascending: true });
-
-      if (error) throw error;
-      setVariants(data || []);
+      const response = await apiCall(`/product-variants/product/${productId}/variants`);
+      if (response.success) {
+        setVariants(response.variants || []);
+      }
     } catch (error) {
       console.error('Error fetching variants:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const uploadImage = async (file) => {
+    if (!file) return null;
+    
+    const formData = new FormData();
+    formData.append('image', file);
+    
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/upload/image`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await response.json();
+      return data.success ? data.imageUrl : null;
+    } catch (error) {
+      console.error('Image upload error:', error);
+      return null;
     }
   };
 
@@ -65,17 +87,47 @@ const ProductVariantsManager = ({ productId, productName }) => {
     setLoading(true);
 
     try {
+      // Upload image if selected
+      let imageUrl = form.variant_image_url;
+      if (imageFile) {
+        imageUrl = await uploadImage(imageFile);
+        if (!imageUrl) {
+          alert('Image upload failed');
+          setLoading(false);
+          return;
+        }
+      }
+
+      // PRICE ISOLATION: Prepare variant data without affecting main product
+      const variantData = {
+        ...form,
+        variant_image_url: imageUrl,
+        // Ensure proper data types for variant pricing
+        variant_price: parseFloat(form.variant_price) || 0,
+        variant_old_price: form.variant_old_price ? parseFloat(form.variant_old_price) : null,
+        variant_discount: parseInt(form.variant_discount) || 0,
+        variant_stock: parseInt(form.variant_stock) || 0,
+        shipping_amount: parseFloat(form.shipping_amount) || 0,
+        is_default: Boolean(form.is_default),
+        active: true
+      };
+
       if (editingVariant) {
-        const { error } = await supabaseAdmin
-          .from('product_variants')
-          .update(form)
-          .eq('id', editingVariant.id);
-        if (error) throw error;
+        // CRITICAL: Only update product_variants table, never products table
+        const response = await apiCall(`/product-variants/variant/${editingVariant.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(variantData)
+        });
+        if (!response.success) throw new Error(response.error || 'Failed to update variant');
+        console.log('Variant updated successfully. Main product pricing preserved.');
       } else {
-        const { error } = await supabaseAdmin
-          .from('product_variants')
-          .insert({ ...form, product_id: productId });
-        if (error) throw error;
+        // CRITICAL: Only insert into product_variants table, never modify products table
+        const response = await apiCall(`/product-variants/product/${productId}/variants`, {
+          method: 'POST',
+          body: JSON.stringify(variantData)
+        });
+        if (!response.success) throw new Error(response.error || 'Failed to add variant');
+        console.log('Variant added successfully. Main product pricing preserved.');
       }
 
       await fetchVariants();
@@ -83,6 +135,7 @@ const ProductVariantsManager = ({ productId, productName }) => {
       resetForm();
     } catch (error) {
       console.error('Error saving variant:', error);
+      alert('Error saving variant: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -93,12 +146,10 @@ const ProductVariantsManager = ({ productId, productName }) => {
 
     setLoading(true);
     try {
-      const { error } = await supabaseAdmin
-        .from('product_variants')
-        .delete()
-        .eq('id', variantId);
-
-      if (error) throw error;
+      const response = await apiCall(`/product-variants/variant/${variantId}`, {
+        method: 'DELETE'
+      });
+      if (!response.success) throw new Error(response.error || 'Failed to delete variant');
       await fetchVariants();
     } catch (error) {
       console.error('Error deleting variant:', error);
@@ -122,7 +173,10 @@ const ProductVariantsManager = ({ productId, productName }) => {
       variant_unit: variant.variant_unit || 'kg',
       shipping_amount: variant.shipping_amount || 0,
       is_default: variant.is_default || false,
+      variant_image_url: variant.variant_image_url || '',
     });
+    setImagePreview(variant.variant_image_url);
+    setImageFile(null);
     setModalOpen(true);
   };
 
@@ -137,10 +191,24 @@ const ProductVariantsManager = ({ productId, productName }) => {
       variant_unit: 'kg',
       shipping_amount: 0,
       is_default: false,
+      variant_image_url: '',
     });
     setWeightValue('');
     setSelectedUnit('kg');
     setEditingVariant(null);
+    setImageFile(null);
+    setImagePreview(null);
+  };
+
+  const handleImageChange = (file) => {
+    setImageFile(file);
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => setImagePreview(e.target.result);
+      reader.readAsDataURL(file);
+    } else {
+      setImagePreview(form.variant_image_url);
+    }
   };
 
   const updateVariantWeight = (value, unit) => {
@@ -177,6 +245,7 @@ const ProductVariantsManager = ({ productId, productName }) => {
       <Table striped highlightOnHover>
         <thead>
           <tr>
+            <th>Image</th>
             <th>Name</th>
             <th>Weight</th>
             <th>Price</th>
@@ -190,6 +259,22 @@ const ProductVariantsManager = ({ productId, productName }) => {
         <tbody>
           {variants.map((variant) => (
             <tr key={variant.id}>
+              <td>
+                {variant.variant_image_url ? (
+                  <Image
+                    src={variant.variant_image_url}
+                    alt={variant.variant_name}
+                    width={40}
+                    height={40}
+                    fit="cover"
+                    radius="sm"
+                  />
+                ) : (
+                  <div className="w-10 h-10 bg-gray-200 rounded flex items-center justify-center">
+                    <FaImage className="text-gray-400" size={16} />
+                  </div>
+                )}
+              </td>
               <td>{variant.variant_name}</td>
               <td>{variant.variant_weight} {variant.variant_unit}</td>
               <td>₹{variant.variant_price}</td>
@@ -233,6 +318,29 @@ const ProductVariantsManager = ({ productId, productName }) => {
             onChange={(e) => setForm({ ...form, variant_name: e.target.value })}
             mb="md"
           />
+
+          <div className="mb-4">
+            <FileInput
+              label="Variant Image"
+              placeholder="Choose variant image"
+              accept="image/*"
+              value={imageFile}
+              onChange={handleImageChange}
+              mb="sm"
+            />
+            {imagePreview && (
+              <div className="mt-2">
+                <Image
+                  src={imagePreview}
+                  alt="Preview"
+                  width={100}
+                  height={100}
+                  fit="cover"
+                  radius="md"
+                />
+              </div>
+            )}
+          </div>
           
           <TextInput
             label="Weight/Size"

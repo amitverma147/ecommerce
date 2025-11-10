@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../utils/supabase';
-import { Button, TextInput, NumberInput, Select, Switch, Group, Text, Badge, ActionIcon } from '@mantine/core';
-import { FaTrash, FaPlus } from 'react-icons/fa';
+import { Button, TextInput, NumberInput, Select, Switch, Group, Text, Badge, ActionIcon, FileInput } from '@mantine/core';
+import { FaTrash, FaPlus, FaUpload } from 'react-icons/fa';
 
 const ProductVariantsManager = ({ product }) => {
   const [variants, setVariants] = useState([]);
@@ -16,6 +16,7 @@ const ProductVariantsManager = ({ product }) => {
     variant_stock: '',
     is_default: false
   });
+  const [variantImageFile, setVariantImageFile] = useState(null);
 
   useEffect(() => {
     if (product?.id) {
@@ -46,6 +47,35 @@ const ProductVariantsManager = ({ product }) => {
     if (!product?.id) return;
 
     try {
+      let variantImageUrl = null;
+      
+      // Upload variant image if provided
+      if (variantImageFile) {
+        const fileExt = variantImageFile.name.split('.').pop();
+        const fileName = `variant_${Date.now()}.${fileExt}`;
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('product-images')
+          .upload(`variants/${fileName}`, variantImageFile);
+        
+        if (uploadError) {
+          console.error('Error uploading variant image:', uploadError);
+        } else {
+          const { data: { publicUrl } } = supabase.storage
+            .from('product-images')
+            .getPublicUrl(uploadData.path);
+          variantImageUrl = publicUrl;
+        }
+      }
+
+      // If this variant is set as default, remove default from other variants
+      if (newVariant.is_default) {
+        await supabase
+          .from('product_variants')
+          .update({ is_default: false })
+          .eq('product_id', product.id);
+      }
+
       const { data, error } = await supabase
         .from('product_variants')
         .insert({
@@ -53,13 +83,16 @@ const ProductVariantsManager = ({ product }) => {
           ...newVariant,
           variant_price: parseFloat(newVariant.variant_price),
           variant_old_price: newVariant.variant_old_price ? parseFloat(newVariant.variant_old_price) : null,
-          variant_stock: parseInt(newVariant.variant_stock)
+          variant_stock: parseInt(newVariant.variant_stock),
+          variant_image: variantImageUrl
         })
         .select();
 
       if (error) throw error;
       
-      setVariants([...variants, data[0]]);
+      // Refresh variants list to show updated default status
+      fetchVariants();
+      
       setNewVariant({
         variant_name: '',
         variant_price: '',
@@ -69,6 +102,7 @@ const ProductVariantsManager = ({ product }) => {
         variant_stock: '',
         is_default: false
       });
+      setVariantImageFile(null);
       setShowAddForm(false);
     } catch (error) {
       console.error('Error adding variant:', error);
@@ -90,6 +124,30 @@ const ProductVariantsManager = ({ product }) => {
     } catch (error) {
       console.error('Error deleting variant:', error);
       alert('Error deleting variant');
+    }
+  };
+
+  const handleSetDefault = async (variantId) => {
+    try {
+      // First, remove default from all variants of this product
+      await supabase
+        .from('product_variants')
+        .update({ is_default: false })
+        .eq('product_id', product.id);
+
+      // Then set the selected variant as default
+      const { error } = await supabase
+        .from('product_variants')
+        .update({ is_default: true })
+        .eq('id', variantId);
+
+      if (error) throw error;
+      
+      // Refresh the variants list
+      fetchVariants();
+    } catch (error) {
+      console.error('Error setting default variant:', error);
+      alert('Error setting default variant');
     }
   };
 
@@ -161,7 +219,7 @@ const ProductVariantsManager = ({ product }) => {
               min={0}
             />
           </div>
-          <div className="flex gap-3 items-end">
+          <div className="grid grid-cols-2 gap-3 mb-3">
             <Select
               label="Unit"
               value={newVariant.variant_unit}
@@ -173,8 +231,17 @@ const ProductVariantsManager = ({ product }) => {
                 { value: 'ml', label: 'ml' },
                 { value: 'piece', label: 'piece' }
               ]}
-              style={{ width: 100 }}
             />
+            <FileInput
+              label="Variant Image"
+              placeholder="Upload variant image"
+              accept="image/*"
+              icon={<FaUpload size={14} />}
+              onChange={setVariantImageFile}
+              value={variantImageFile}
+            />
+          </div>
+          <div className="flex gap-3 items-center justify-between">
             <Switch
               label="Default Variant"
               checked={newVariant.is_default}
@@ -198,10 +265,17 @@ const ProductVariantsManager = ({ product }) => {
           </div>
         ) : (
           variants.map(variant => (
-            <div key={variant.id} className="flex items-center justify-between p-3 border rounded bg-white">
+            <div key={variant.id} className="flex items-center gap-3 p-3 border rounded bg-white">
+              {variant.variant_image && (
+                <img
+                  src={variant.variant_image}
+                  alt={variant.variant_name}
+                  className="w-12 h-12 object-cover rounded border"
+                />
+              )}
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <Text weight={500}>{variant.variant_weight}</Text>
+                  <Text weight={500}>{variant.variant_name || variant.variant_weight}</Text>
                   {variant.is_default && (
                     <Badge color="blue" size="sm">Default</Badge>
                   )}
@@ -218,15 +292,29 @@ const ProductVariantsManager = ({ product }) => {
                   )}
                   <span>Stock: {variant.variant_stock}</span>
                   <span>Unit: {variant.variant_unit}</span>
+                  <span>Weight: {variant.variant_weight}</span>
                 </div>
               </div>
-              <ActionIcon
-                color="red"
-                onClick={() => handleDeleteVariant(variant.id)}
-                title="Delete variant"
-              >
-                <FaTrash size={14} />
-              </ActionIcon>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleSetDefault(variant.id)}
+                  className={`px-3 py-1 text-xs rounded ${
+                    variant.is_default 
+                      ? 'bg-blue-500 text-white cursor-default'
+                      : 'bg-gray-200 text-gray-700 hover:bg-blue-100'
+                  }`}
+                  disabled={variant.is_default}
+                >
+                  {variant.is_default ? 'Default' : 'Set Default'}
+                </button>
+                <ActionIcon
+                  color="red"
+                  onClick={() => handleDeleteVariant(variant.id)}
+                  title="Delete variant"
+                >
+                  <FaTrash size={14} />
+                </ActionIcon>
+              </div>
             </div>
           ))
         )}

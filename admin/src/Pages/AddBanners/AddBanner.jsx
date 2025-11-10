@@ -1,13 +1,14 @@
 /* eslint-disable react/prop-types */
 import { useState, useEffect, useRef } from "react";
-import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { FaEdit, FaTrash, FaPlus } from "react-icons/fa";
-
-// Base URL for your banner backend APIs
-const API_URL = import.meta.env.VITE_API_BASE_URL
-  ? `${import.meta.env.VITE_API_BASE_URL}/banner`
-  : "http://localhost:8000/api/banner";
+import { notifications } from "@mantine/notifications";
+import {
+  getAllBanners,
+  addBanner,
+  updateBanner,
+  deleteBanner,
+} from "../../utils/supabaseApi";
 
 // Define banner types for the dropdown
 const BANNER_TYPES = [
@@ -71,24 +72,21 @@ const BannerForm = ({ initialData, onSave, onCancel }) => {
     e.preventDefault();
     setIsSubmitting(true);
 
-    const formData = new FormData();
-    formData.append("name", name);
-    formData.append("banner_type", bannerType);
-    formData.append("description", description);
-    formData.append("link", link);
-    formData.append("active", active.toString());
-    formData.append("position", position);
-    formData.append("is_mobile", isMobile.toString());
-
-    if (image) {
-      formData.append("image", image);
-    }
+    const bannerData = {
+      name,
+      banner_type: bannerType,
+      description,
+      link,
+      active: active.toString(),
+      position,
+      is_mobile: isMobile.toString(),
+    };
 
     try {
       if (initialData) {
-        await onSave(initialData.id, formData);
+        await onSave(initialData.id, bannerData, image);
       } else {
-        await onSave(formData);
+        await onSave(bannerData, image);
       }
     } catch (error) {
       console.error("Error saving banner:", error);
@@ -326,10 +324,19 @@ const AddBanner = () => {
   const fetchBanners = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_URL}/all`);
-      setBanners(response.data.banners);
+      const result = await getAllBanners();
+      if (result.success) {
+        setBanners(result.banners);
+      } else {
+        console.error("Error fetching banners:", result.error);
+        notifications.show({
+          color: "red",
+          message: "Failed to load banners.",
+        });
+      }
     } catch (error) {
       console.error("Error fetching banners:", error);
+      notifications.show({ color: "red", message: "Failed to load banners." });
     } finally {
       setLoading(false);
     }
@@ -339,32 +346,42 @@ const AddBanner = () => {
     fetchBanners();
   }, []);
 
-  const handleAdd = async (formData) => {
+  const handleAdd = async (bannerData, imageFile) => {
     try {
-      console.log('🚀 Adding banner to:', `${API_URL}/add`);
-      const response = await axios.post(`${API_URL}/add`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      console.log('✅ Banner added successfully:', response.data);
-      setIsFormVisible(false);
-      fetchBanners(); // Refresh the list
-      alert('Banner added successfully!');
+      const result = await addBanner(bannerData, imageFile);
+      if (result.success) {
+        setIsFormVisible(false);
+        fetchBanners(); // Refresh the list
+        notifications.show({
+          color: "green",
+          message: "Banner added successfully!",
+        });
+      } else {
+        throw new Error(result.error);
+      }
     } catch (error) {
-      console.error("❌ Error adding banner:", error);
-      alert(`Error: ${error.response?.data?.error || error.message}`);
+      console.error("Error adding banner:", error);
+      notifications.show({ color: "red", message: `Error: ${error.message}` });
     }
   };
 
-  const handleUpdate = async (id, formData) => {
+  const handleUpdate = async (id, bannerData, imageFile) => {
     try {
-      await axios.put(`${API_URL}/update/${id}`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      setIsFormVisible(false);
-      setEditingBanner(null);
-      fetchBanners(); // Refresh the list
+      const result = await updateBanner(id, bannerData, imageFile);
+      if (result.success) {
+        setIsFormVisible(false);
+        setEditingBanner(null);
+        fetchBanners(); // Refresh the list
+        notifications.show({
+          color: "green",
+          message: "Banner updated successfully!",
+        });
+      } else {
+        throw new Error(result.error);
+      }
     } catch (error) {
       console.error("Error updating banner:", error);
+      notifications.show({ color: "red", message: `Error: ${error.message}` });
     }
   };
 
@@ -374,10 +391,22 @@ const AddBanner = () => {
     );
     if (isConfirmed) {
       try {
-        await axios.delete(`${API_URL}/delete/${id}`);
-        fetchBanners(); // Refresh the list
+        const result = await deleteBanner(id);
+        if (result.success) {
+          fetchBanners(); // Refresh the list
+          notifications.show({
+            color: "green",
+            message: "Banner deleted successfully!",
+          });
+        } else {
+          throw new Error(result.error);
+        }
       } catch (error) {
         console.error("Error deleting banner:", error);
+        notifications.show({
+          color: "red",
+          message: "Failed to delete banner.",
+        });
       }
     }
   };

@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { notifications } from "@mantine/notifications";
+import {
+  getAllBrands,
+  addBrand,
+  updateBrand,
+  deleteBrand,
+} from "../../utils/supabaseApi";
 
 const Brand = () => {
   const navigate = useNavigate();
@@ -17,30 +23,40 @@ const Brand = () => {
 
   const fetchBrands = async () => {
     try {
-      const res = await axios.get(
-        `${import.meta.env.VITE_API_BASE_URL}/brand/list`
-      );
-      setBrands(res.data.brands);
+      const result = await getAllBrands();
+      if (result.success) {
+        setBrands(result.data);
+      } else {
+        console.error("Failed to fetch Brands:", result.error);
+        notifications.show({ color: "red", message: "Failed to load brands." });
+      }
     } catch (err) {
       console.error("Failed to fetch Brands:", err);
+      notifications.show({ color: "red", message: "Failed to load brands." });
     } finally {
       setLoading(false);
     }
   };
 
-  const deleteBrand = async (id) => {
+  const deleteBrandHandler = async (id) => {
     const confirmDelete = window.confirm(
       "Are you sure you want to delete this Brand?"
     );
     if (!confirmDelete) return;
 
     try {
-      await axios.delete(
-        `${import.meta.env.VITE_API_BASE_URL}/brand/delete/${id}`
-      );
-      await fetchBrands();
+      const result = await deleteBrand(id);
+      if (result.success) {
+        await fetchBrands();
+        notifications.show({
+          color: "green",
+          message: "Brand deleted successfully.",
+        });
+      } else {
+        throw new Error(result.error);
+      }
     } catch (err) {
-      alert("Failed to delete Brand");
+      notifications.show({ color: "red", message: "Failed to delete brand." });
       console.error(err);
     }
   };
@@ -49,33 +65,33 @@ const Brand = () => {
     e.preventDefault();
     setSubmitting(true);
 
-    const formData = new FormData();
-    formData.append("name", form.name);
-    if (form.imageFile) {
-      formData.append("image_url", form.imageFile);
-    }
-
     try {
+      let result;
       if (editingBrand) {
-        await axios.put(
-          `${import.meta.env.VITE_API_BASE_URL}/brand/update/${
-            editingBrand.id
-          }`,
-          formData
+        result = await updateBrand(
+          editingBrand.id,
+          { name: form.name },
+          form.imageFile
         );
       } else {
-        await axios.post(
-          `${import.meta.env.VITE_API_BASE_URL}/brand/add`,
-          formData
-        );
+        result = await addBrand({ name: form.name }, form.imageFile);
       }
-      await fetchBrands();
-      setShowForm(false);
-      setForm({ name: "", imageFile: null });
-      setPreview(null);
-      setEditingBrand(null);
+
+      if (result.success) {
+        await fetchBrands();
+        setShowForm(false);
+        setForm({ name: "", imageFile: null });
+        setPreview(null);
+        setEditingBrand(null);
+        notifications.show({
+          color: "green",
+          message: "Brand saved successfully.",
+        });
+      } else {
+        throw new Error(result.error);
+      }
     } catch (err) {
-      alert("Failed to save Brand");
+      notifications.show({ color: "red", message: "Failed to save brand." });
       console.error(err);
     } finally {
       setSubmitting(false);
@@ -97,7 +113,7 @@ const Brand = () => {
   }, []);
 
   return (
-    <div className="p-4 sm:p-6 max-w-screen-xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Brands</h1>
 
       {/* Form for Add/Edit */}
@@ -202,7 +218,7 @@ const Brand = () => {
                     </button>
                     <button
                       className="bg-red-600 text-white px-3 py-1 rounded"
-                      onClick={() => deleteBrand(brand.id)}
+                      onClick={() => deleteBrandHandler(brand.id)}
                     >
                       🗑️
                     </button>

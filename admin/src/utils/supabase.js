@@ -17,44 +17,50 @@ const SUPABASE_ADMIN_GLOBAL_KEY = "__admin_supabase_admin_client__";
 
 // Create regular client with anon key (singleton with global check)
 const getSupabaseClient = () => {
-  if (!window[SUPABASE_GLOBAL_KEY]) {
-    window[SUPABASE_GLOBAL_KEY] = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        storage: window.localStorage,
-        storageKey: "big-best-admin-auth-token",
-        autoRefreshToken: true,
-        persistSession: true,
-        detectSessionInUrl: false,
-      },
-      global: {
-        headers: {
-          "X-Client-Info": "big-best-admin",
+  if (!globalThis[SUPABASE_GLOBAL_KEY]) {
+    globalThis[SUPABASE_GLOBAL_KEY] = createClient(
+      supabaseUrl,
+      supabaseAnonKey,
+      {
+        auth: {
+          storage:
+            typeof window !== "undefined" ? window.localStorage : undefined,
+          storageKey: "big-best-admin-auth-token",
+          autoRefreshToken: true,
+          persistSession: true,
+          detectSessionInUrl: false,
         },
-      },
-      db: {
-        schema: "public",
-      },
-      realtime: {
-        params: {
-          eventsPerSecond: 10,
+        global: {
+          headers: {
+            "X-Client-Info": "big-best-admin",
+          },
         },
-      },
-    });
+        db: {
+          schema: "public",
+        },
+        realtime: {
+          params: {
+            eventsPerSecond: 10,
+          },
+        },
+      }
+    );
   }
-  return window[SUPABASE_GLOBAL_KEY];
+  return globalThis[SUPABASE_GLOBAL_KEY];
 };
 
 // Create admin client with service role key (singleton with global check)
 const getSupabaseAdminClient = () => {
-  if (!window[SUPABASE_ADMIN_GLOBAL_KEY]) {
-    window[SUPABASE_ADMIN_GLOBAL_KEY] = createClient(
+  if (!globalThis[SUPABASE_ADMIN_GLOBAL_KEY]) {
+    globalThis[SUPABASE_ADMIN_GLOBAL_KEY] = createClient(
       supabaseUrl,
       supabaseServiceKey,
       {
         auth: {
           autoRefreshToken: false,
           persistSession: false,
-          storage: window.localStorage,
+          storage:
+            typeof window !== "undefined" ? window.localStorage : undefined,
           storageKey: "big-best-admin-service-role-token",
         },
         global: {
@@ -65,7 +71,7 @@ const getSupabaseAdminClient = () => {
       }
     );
   }
-  return window[SUPABASE_ADMIN_GLOBAL_KEY];
+  return globalThis[SUPABASE_ADMIN_GLOBAL_KEY];
 };
 
 // Export singleton instances

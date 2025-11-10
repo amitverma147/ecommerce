@@ -11,11 +11,14 @@ const BulkProductSettings = () => {
     min_quantity: 50,
     bulk_price: 0,
     discount_percentage: 0,
-    is_bulk_enabled: true
+    is_bulk_enabled: true,
+    variant_id: null
   });
+  const [selectedVariant, setSelectedVariant] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
+  const [activeTabs, setActiveTabs] = useState({}); // Track active tab for each product
   const itemsPerPage = 6;
 
   const filteredProducts = products.filter(product => {
@@ -43,15 +46,25 @@ const BulkProductSettings = () => {
 
   const fetchProducts = async () => {
     try {
-      // First get products
+      // Get products with variants
       const { data: productsData, error: productsError } = await supabase
         .from('products')
-        .select('id, name, image, price')
+        .select(`
+          id, name, image, price,
+          product_variants (
+            id,
+            variant_name,
+            variant_price,
+            variant_weight,
+            variant_unit,
+            variant_stock
+          )
+        `)
         .order('name');
       
       if (productsError) throw productsError;
       
-      // Then get bulk settings for all products
+      // Get bulk settings for all products and variants
       const { data: bulkSettings, error: bulkError } = await supabase
         .from('bulk_product_settings')
         .select('*');
@@ -61,7 +74,8 @@ const BulkProductSettings = () => {
       // Combine the data
       const data = productsData.map(product => ({
         ...product,
-        bulk_product_settings: bulkSettings.filter(setting => setting.product_id === product.id)
+        bulk_product_settings: bulkSettings.filter(setting => setting.product_id === product.id),
+        hasVariants: product.product_variants?.length > 0
       }));
 
       console.log('🔍 Raw data from database:', data);
@@ -83,14 +97,23 @@ const BulkProductSettings = () => {
     }
   };
 
-  const handleEdit = (product) => {
+  const handleEdit = (product, variant = null) => {
     setEditingProduct(product.id);
-    const bulkSettings = product.bulk_product_settings?.[0];
+    setSelectedVariant(variant);
+    
+    // Find bulk settings for product or variant
+    const bulkSettings = variant 
+      ? product.bulk_product_settings?.find(s => s.variant_id === variant.id)
+      : product.bulk_product_settings?.find(s => !s.variant_id);
+    
+    const basePrice = variant ? variant.variant_price : product.price;
+    
     setFormData({
       min_quantity: bulkSettings?.min_quantity || 50,
-      bulk_price: bulkSettings?.bulk_price || product.price,
+      bulk_price: bulkSettings?.bulk_price || basePrice,
       discount_percentage: bulkSettings?.discount_percentage || 0,
-      is_bulk_enabled: bulkSettings?.is_bulk_enabled ?? true
+      is_bulk_enabled: bulkSettings?.is_bulk_enabled ?? true,
+      variant_id: variant?.id || null
     });
   };
 
@@ -115,12 +138,19 @@ const BulkProductSettings = () => {
         })
       );
       
-      // Check if bulk settings exist
-      const { data: existing, error: checkError } = await supabase
+      // Check if bulk settings exist for product or variant
+      let existingQuery = supabase
         .from('bulk_product_settings')
         .select('id')
-        .eq('product_id', productId)
-        .maybeSingle();
+        .eq('product_id', productId);
+      
+      if (formData.variant_id) {
+        existingQuery = existingQuery.eq('variant_id', formData.variant_id);
+      } else {
+        existingQuery = existingQuery.is('variant_id', null);
+      }
+      
+      const { data: existing, error: checkError } = await existingQuery.maybeSingle();
       
       console.log('🔍 Existing record check:', { existing, checkError });
 
@@ -134,9 +164,10 @@ const BulkProductSettings = () => {
             bulk_price: formData.bulk_price,
             discount_percentage: formData.discount_percentage,
             is_bulk_enabled: formData.is_bulk_enabled,
+            is_variant_bulk: !!formData.variant_id,
             updated_at: new Date().toISOString()
           })
-          .eq('product_id', productId)
+          .eq('id', existing.id)
           .select();
         
         result = { data, error };
@@ -146,10 +177,12 @@ const BulkProductSettings = () => {
           .from('bulk_product_settings')
           .insert([{
             product_id: productId,
+            variant_id: formData.variant_id || null,
             min_quantity: formData.min_quantity,
             bulk_price: formData.bulk_price,
             discount_percentage: formData.discount_percentage,
-            is_bulk_enabled: formData.is_bulk_enabled
+            is_bulk_enabled: formData.is_bulk_enabled,
+            is_variant_bulk: !!formData.variant_id
           }])
           .select();
         
@@ -183,11 +216,13 @@ const BulkProductSettings = () => {
 
   const handleCancel = () => {
     setEditingProduct(null);
+    setSelectedVariant(null);
     setFormData({
       min_quantity: 50,
       bulk_price: 0,
       discount_percentage: 0,
-      is_bulk_enabled: true
+      is_bulk_enabled: true,
+      variant_id: null
     });
   };
 
@@ -263,8 +298,23 @@ const BulkProductSettings = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {paginatedProducts.map((product) => {
-          const bulkSettings = product.bulk_product_settings?.[0];
           const isEditing = editingProduct === product.id;
+          const activeTab = activeTabs[product.id] || 'main';
+          
+          const setActiveTab = (tab) => {
+            setActiveTabs(prev => ({ ...prev, [product.id]: tab }));
+          };
+          
+          // Get current bulk settings based on selected tab
+          const getCurrentBulkSettings = () => {
+            if (activeTab === 'main') {
+              return product.bulk_product_settings?.find(s => !s.variant_id);
+            } else {
+              return product.bulk_product_settings?.find(s => s.variant_id === activeTab);
+            }
+          };
+          
+          const bulkSettings = getCurrentBulkSettings();
           
           return (
             <div key={product.id} className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-200">
@@ -287,9 +337,74 @@ const BulkProductSettings = () => {
                       <span className="text-2xl font-bold text-blue-600">₹{product.price}</span>
                       <span className="ml-2 text-sm text-gray-500">Regular Price</span>
                     </div>
+                    {product.hasVariants && (
+                      <div className="mt-2">
+                        <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-purple-100 text-purple-800">
+                          {product.product_variants?.length} Variants Available
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
+              
+              {/* Variant Tabs */}
+              {product.hasVariants && (
+                <div className="px-6 pt-4">
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    <button
+                      onClick={() => setActiveTab('main')}
+                      className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                        activeTab === 'main'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      Main Product
+                    </button>
+                    {product.product_variants?.map((variant) => (
+                      <button
+                        key={variant.id}
+                        onClick={() => setActiveTab(variant.id)}
+                        className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                          activeTab === variant.id
+                            ? 'bg-purple-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        {variant.variant_weight} {variant.variant_unit}
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {/* Current Selection Info */}
+                  <div className="bg-gray-50 rounded-lg p-3 mb-4">
+                    {activeTab === 'main' ? (
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">Main Product Settings</div>
+                        <div className="text-xs text-gray-600">Base price: ₹{product.price}</div>
+                      </div>
+                    ) : (
+                      <div>
+                        {(() => {
+                          const variant = product.product_variants?.find(v => v.id === activeTab);
+                          return variant ? (
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">
+                                Variant: {variant.variant_weight} {variant.variant_unit}
+                              </div>
+                              <div className="text-xs text-gray-600">
+                                Price: ₹{variant.variant_price} • Stock: {variant.variant_stock}
+                              </div>
+                            </div>
+                          ) : null;
+                        })()
+                        }
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Bulk Settings */}
               <div className="p-6">
@@ -407,11 +522,16 @@ const BulkProductSettings = () => {
                   </div>
                 ) : (
                   <button
-                    onClick={() => handleEdit(product)}
+                    onClick={() => {
+                      const variant = activeTab === 'main' ? null : product.product_variants?.find(v => v.id === activeTab);
+                      handleEdit(product, variant);
+                    }}
                     className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center space-x-2 shadow-md hover:shadow-lg"
                   >
                     <FaEdit className="w-4 h-4" />
-                    <span>Setup Bulk Order</span>
+                    <span>
+                      Setup Bulk Order {activeTab !== 'main' ? '(Variant)' : '(Main Product)'}
+                    </span>
                   </button>
                 )}
               </div>

@@ -134,6 +134,12 @@ const Sidebar = ({ isOpen = true }) => {
       description: "Manage storage usage and files",
     },
     {
+      title: "Delivery Zones",
+      icon: <FaList />,
+      path: "/delivery-zones",
+      description: "Manage delivery zones and pincodes for product delivery",
+    },
+    {
       title: "Daily Deals",
       icon: <FaList />,
       path: "/b&b",
@@ -201,24 +207,15 @@ const Sidebar = ({ isOpen = true }) => {
     {
       title: "Bulk Orders",
       icon: <FaList />,
-      submenu: [
-        {
-          title: "B2B Enquiries",
-          icon: <RiQuestionnaireFill />,
-          path: "/bulk-order-enquiries",
-        },
-        {
-          title: "Wholesale Orders",
-          icon: <HiArchive />,
-          path: "/wholesale-bulk-orders",
-        },
-        {
-          title: "Bulk Product Settings",
-          icon: <RiSettings4Fill />,
-          path: "/bulk-product-settings",
-        },
-      ],
+      path: "/bulk-orders",
     },
+    {
+      title: "COD Orders",
+      icon: <FaList />,
+      path: "/cod-orders",
+      description: "Manage Cash on Delivery orders",
+    },
+
     {
       title: "Warehouses",
       icon: <FaList />,

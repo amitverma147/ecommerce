@@ -207,9 +207,20 @@ export async function toggleShippingBannerStatus(id, active) {
 }
 // BANNERS
 export async function getAllBanners() {
-  const { data, error } = await supabaseAdmin.from("banners").select();
+  const { data, error } = await supabaseAdmin.from("add_banner").select();
   if (error) return { success: false, error: error.message };
   return { success: true, banners: data };
+}
+
+export async function getBanner(id) {
+  const { data, error } = await supabaseAdmin
+    .from("add_banner")
+    .select("*")
+    .eq("id", id)
+    .single();
+  if (error) return { success: false, error: error.message };
+  if (!data) return { success: false, error: "Banner not found" };
+  return { success: true, banner: data };
 }
 
 export async function addBanner(banner, imageFile) {
@@ -232,7 +243,7 @@ export async function addBanner(banner, imageFile) {
   }
   const bannerToInsert = { ...banner, image: imageUrl };
   const { data, error } = await supabase
-    .from("banners")
+    .from("add_banner")
     .insert([bannerToInsert])
     .select()
     .single();
@@ -259,7 +270,7 @@ export async function updateBanner(id, banner, imageFile) {
     imageUrl = urlData.publicUrl;
   }
   const { data, error } = await supabase
-    .from("banners")
+    .from("add_banner")
     .update({ ...banner, image: imageUrl })
     .eq("id", id)
     .select()
@@ -269,14 +280,17 @@ export async function updateBanner(id, banner, imageFile) {
 }
 
 export async function deleteBanner(id) {
-  const { error } = await supabaseAdmin.from("banners").delete().eq("id", id);
+  const { error } = await supabaseAdmin
+    .from("add_banner")
+    .delete()
+    .eq("id", id);
   if (error) return { success: false, error: error.message };
   return { success: true };
 }
 
 export async function toggleBannerStatus(id, active) {
   const { error } = await supabase
-    .from("banners")
+    .from("add_banner")
     .update({ active })
     .eq("id", id);
   if (error) return { success: false, error: error.message };
@@ -285,7 +299,7 @@ export async function toggleBannerStatus(id, active) {
 
 export async function toggleMobileBannerStatus(id, is_mobile) {
   const { error } = await supabase
-    .from("banners")
+    .from("add_banner")
     .update({ is_mobile })
     .eq("id", id);
   if (error) return { success: false, error: error.message };
@@ -854,12 +868,126 @@ export async function addProduct(
         image: displayImageUrl,
         images: imageUrls,
         video: videoUrl,
+        stock_quantity: product.stock || product.stock_quantity || 0,
+        stock: product.stock || product.stock_quantity || 0,
+        product_type: product.product_type || "nationwide",
       },
     ])
     .select();
 
   if (error) return { success: false, error: error.message };
   return { success: true, product: data[0] };
+}
+
+// Enhanced product creation with warehouse management
+export async function addProductWithWarehouse(
+  product,
+  imageFiles = [],
+  videoFile = null,
+  displayImageFile = null
+) {
+  try {
+    // Upload images first (same as original addProduct)
+    const imageUrls = [];
+    let videoUrl = null;
+    let displayImageUrl = product.image || null;
+
+    // Upload display image (main image)
+    if (displayImageFile && displayImageFile instanceof File) {
+      const ext = displayImageFile.name.split(".").pop();
+      const fileName = `display/${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}.${ext}`;
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from("products")
+        .upload(fileName, displayImageFile);
+      if (uploadError) return { success: false, error: uploadError.message };
+
+      const { data: urlData } = supabase.storage
+        .from("products")
+        .getPublicUrl(fileName);
+      displayImageUrl = urlData.publicUrl;
+    }
+
+    // Upload all images
+    for (const file of imageFiles) {
+      const ext = file.name.split(".").pop();
+      const fileName = `images/${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}.${ext}`;
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from("products")
+        .upload(fileName, file);
+      if (uploadError) return { success: false, error: uploadError.message };
+
+      const { data: urlData } = supabase.storage
+        .from("products")
+        .getPublicUrl(fileName);
+      imageUrls.push(urlData.publicUrl);
+    }
+
+    // Upload video (if present)
+    if (videoFile) {
+      const ext = videoFile.name.split(".").pop();
+      const videoName = `videos/${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}.${ext}`;
+      const { error: videoError } = await supabaseAdmin.storage
+        .from("products")
+        .upload(videoName, videoFile);
+      if (videoError) return { success: false, error: videoError.message };
+
+      const { data: videoUrlData } = supabase.storage
+        .from("products")
+        .getPublicUrl(videoName);
+      videoUrl = videoUrlData.publicUrl;
+    }
+
+    // Call the enhanced backend API endpoint for product creation with warehouse management
+    const apiUrl =
+      import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
+
+    const payload = {
+      ...product,
+      specifications: product.specifications || null,
+      image: displayImageUrl,
+      images: imageUrls,
+      video: videoUrl,
+    };
+
+    const response = await fetch(
+      `${apiUrl}/product-warehouse/products/create`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: result.error || "Failed to create product",
+      };
+    }
+
+    return {
+      success: true,
+      product: result.data.product,
+      warehouse_assignments: result.data.warehouse_assignments,
+      message: result.message,
+    };
+  } catch (error) {
+    console.error("Error in addProductWithWarehouse:", error);
+    return {
+      success: false,
+      error: "Failed to create product with warehouse management",
+    };
+  }
 }
 
 export async function updateProduct(
@@ -949,6 +1077,10 @@ export async function updateProduct(
       image: imageUrl,
       images: imageUrls,
       video: videoUrl,
+      stock_quantity: product.stock || product.stock_quantity || 0,
+      stock: product.stock || product.stock_quantity || 0,
+      product_type:
+        product.product_type || dbProduct.product_type || "nationwide",
     })
     .eq("id", id)
     .select();
@@ -2484,6 +2616,1298 @@ export async function getStorageAnalytics() {
     }
 
     return { success: true, data: analytics };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Warehouse Management Functions
+
+// Get all warehouses
+export async function getAllWarehouses({ type, is_active } = {}) {
+  try {
+    let query = supabase.from("warehouses").select("*");
+
+    if (type) {
+      query = query.eq("type", type);
+    }
+
+    if (is_active !== undefined) {
+      query = query.eq("is_active", is_active);
+    }
+
+    query = query.order("name", { ascending: true });
+
+    const { data: warehouses, error } = await query;
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    // Fetch zone information for each warehouse
+    const warehousesWithZones = await Promise.all(
+      warehouses?.map(async (warehouse) => {
+        const { data: warehouseZones, error: zonesError } = await supabase
+          .from("warehouse_zones")
+          .select(
+            `
+            zone_id,
+            delivery_zones (
+              id,
+              name,
+              zone_pincodes (
+                pincode,
+                city,
+                state
+              )
+            )
+          `
+          )
+          .eq("warehouse_id", warehouse.id)
+          .eq("is_active", true);
+
+        if (zonesError) {
+          console.error(
+            "Error fetching zones for warehouse",
+            warehouse.id,
+            zonesError
+          );
+        }
+
+        const zones =
+          warehouseZones
+            ?.map((wz) => ({
+              ...wz.delivery_zones,
+              pincodes: wz.delivery_zones?.zone_pincodes || [],
+            }))
+            .filter(Boolean) || [];
+
+        return {
+          ...warehouse,
+          pincode: warehouse.location, // Map location to pincode for frontend compatibility
+          zones: zones,
+        };
+      }) || []
+    );
+
+    return {
+      success: true,
+      data: warehousesWithZones,
+      count: warehousesWithZones.length,
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getAllZones(options = {}) {
+  const { page = 1, limit = 50, search = "", active_only = "false" } = options;
+  const offset = (page - 1) * limit;
+
+  let query = supabaseAdmin.from("delivery_zones").select(
+    `
+      id,
+      name,
+      display_name,
+      is_nationwide,
+      is_active,
+      description,
+      created_at,
+      zone_pincodes(pincode, city, state)
+    `,
+    { count: "exact" }
+  );
+
+  if (search) {
+    query = query.or(`name.ilike.%${search}%,display_name.ilike.%${search}%`);
+  }
+
+  if (active_only === "true") {
+    query = query.eq("is_active", true);
+  }
+
+  query = query.range(offset, offset + limit - 1);
+
+  const { data, error, count } = await query;
+
+  if (error) return { success: false, error: error.message };
+
+  const transformedData =
+    data?.map((zone) => {
+      const pincodes = zone.zone_pincodes || [];
+      const states = [
+        ...new Set(pincodes.map((zp) => zp.state).filter(Boolean) || []),
+      ];
+
+      return {
+        id: zone.id,
+        name: zone.display_name || zone.name,
+        display_name: zone.display_name,
+        state: states.length === 1 ? states[0] : "Multiple States",
+        is_nationwide: zone.is_nationwide,
+        is_active: zone.is_active,
+        description: zone.description,
+        pincode_count: pincodes.length,
+        states: states,
+        created_at: zone.created_at,
+      };
+    }) || [];
+
+  return {
+    success: true,
+    data: transformedData,
+    pagination: {
+      total: count,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      totalPages: Math.ceil(count / limit),
+    },
+  };
+}
+
+// Create a new warehouse
+export async function createWarehouse(warehouseData) {
+  try {
+    // Call the backend API for proper validation and creation
+    const response = await fetch(
+      `${import.meta.env.VITE_API_BASE_URL}/warehouses`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(warehouseData),
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: result.error || "Failed to create warehouse",
+      };
+    }
+
+    return result;
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Get single warehouse
+export async function getSingleWarehouse(id) {
+  try {
+    const { data: warehouse, error } = await supabase
+      .from("warehouses")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    // Fetch zone information
+    const { data: warehouseZones, error: zonesError } = await supabase
+      .from("warehouse_zones")
+      .select(
+        `
+        zone_id,
+        delivery_zones (
+          id,
+          name,
+          zone_pincodes (
+            pincode,
+            city,
+            state
+          )
+        )
+      `
+      )
+      .eq("warehouse_id", id)
+      .eq("is_active", true);
+
+    if (zonesError) {
+      console.error("Error fetching zones for warehouse", id, zonesError);
+    }
+
+    const zones =
+      warehouseZones
+        ?.map((wz) => ({
+          ...wz.delivery_zones,
+          pincodes: wz.delivery_zones?.zone_pincodes || [],
+        }))
+        .filter(Boolean) || [];
+
+    const warehouseWithZones = {
+      ...warehouse,
+      pincode: warehouse.location,
+      zones: zones,
+    };
+
+    return { success: true, data: warehouseWithZones };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Update warehouse
+export async function updateWarehouse(id, updateData) {
+  try {
+    // Call the backend API for proper validation and updating
+    const response = await fetch(
+      `${import.meta.env.VITE_API_BASE_URL}/warehouses/${id}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(updateData),
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: result.error || "Failed to update warehouse",
+      };
+    }
+
+    return result;
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Delete warehouse
+export async function deleteWarehouse(id) {
+  try {
+    const { error } = await supabase.from("warehouses").delete().eq("id", id);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Get available pincodes for a zonal warehouse (for division warehouse creation)
+export async function getZonalWarehouseAvailablePincodes(zonalWarehouseId) {
+  try {
+    // Call the backend API which has better logic for availability checking
+    const response = await fetch(
+      `${
+        import.meta.env.VITE_API_BASE_URL
+      }/warehouses/${zonalWarehouseId}/available-pincodes`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: result.error || "Failed to fetch available pincodes",
+      };
+    }
+
+    return result;
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Direct Supabase query for available pincodes (fallback when backend is down)
+export async function getZonalWarehouseAvailablePincodesDirect(
+  zonalWarehouseId
+) {
+  try {
+    // Get zones assigned to the zonal warehouse
+    const { data: warehouseZones, error: zonesError } = await supabase
+      .from("warehouse_zones")
+      .select("zone_id")
+      .eq("warehouse_id", zonalWarehouseId)
+      .eq("is_active", true);
+
+    if (zonesError) {
+      return { success: false, error: zonesError.message };
+    }
+
+    if (!warehouseZones || warehouseZones.length === 0) {
+      return { success: true, data: [] };
+    }
+
+    // Get zone IDs
+    const zoneIds = warehouseZones.map((wz) => wz.zone_id);
+
+    // Get all pincodes for these zones
+    const { data: pincodes, error: pincodesError } = await supabase
+      .from("zone_pincodes")
+      .select("id, pincode, city, state")
+      .in("zone_id", zoneIds)
+      .eq("is_active", true)
+      .order("pincode");
+
+    if (pincodesError) {
+      return { success: false, error: pincodesError.message };
+    }
+
+    return { success: true, data: pincodes || [] };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Get warehouse products
+export async function getWarehouseProducts(warehouseId) {
+  try {
+    const { data, error } = await supabase
+      .from("warehouse_products")
+      .select(
+        `
+        *,
+        products (
+          id,
+          name,
+          description,
+          category,
+          subcategory,
+          images,
+          is_active
+        )
+      `
+      )
+      .eq("warehouse_id", warehouseId);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Add product to warehouse
+export async function addProductToWarehouse(warehouseId, productData) {
+  try {
+    const insertData = {
+      warehouse_id: warehouseId,
+      ...productData,
+    };
+
+    const { data, error } = await supabase
+      .from("warehouse_products")
+      .insert([insertData])
+      .select()
+      .single();
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Update warehouse product
+export async function updateWarehouseProduct(
+  warehouseId,
+  productId,
+  updateData
+) {
+  try {
+    const { data, error } = await supabase
+      .from("warehouse_products")
+      .update(updateData)
+      .eq("warehouse_id", warehouseId)
+      .eq("product_id", productId)
+      .select()
+      .single();
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Remove product from warehouse
+export async function removeProductFromWarehouse(warehouseId, productId) {
+  try {
+    const { error } = await supabase
+      .from("warehouse_products")
+      .delete()
+      .eq("warehouse_id", warehouseId)
+      .eq("product_id", productId);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Get warehouse hierarchy
+export async function getWarehouseHierarchy() {
+  try {
+    const { data, error } = await supabase
+      .from("warehouses")
+      .select("*")
+      .order("type", { ascending: true })
+      .order("name", { ascending: true });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    // Build hierarchy
+    const hierarchy = {
+      zonal: data.filter((w) => w.type === "zonal"),
+      division: data.filter((w) => w.type === "division"),
+    };
+
+    return { success: true, data: hierarchy };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Get child warehouses
+export async function getChildWarehouses(parentId) {
+  try {
+    const { data, error } = await supabase
+      .from("warehouses")
+      .select("*")
+      .eq("parent_warehouse_id", parentId)
+      .order("name", { ascending: true });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// BANNER GROUP FUNCTIONS
+export async function getAllBannerGroups() {
+  try {
+    const { data, error } = await supabase
+      .from("add_banner_group")
+      .select("*")
+      .order("name", { ascending: true });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function addBannerGroup(bannerGroup, imageFile) {
+  try {
+    let imageUrl = null;
+
+    if (imageFile) {
+      const fileExt = imageFile.name.split(".").pop();
+      const fileName = `${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("addBannerGroup")
+        .upload(fileName, imageFile, {
+          contentType: imageFile.type,
+          upsert: true,
+        });
+
+      if (uploadError) {
+        return { success: false, error: uploadError.message };
+      }
+
+      const { data: urlData } = supabase.storage
+        .from("addBannerGroup")
+        .getPublicUrl(fileName);
+      imageUrl = urlData.publicUrl;
+    }
+
+    const { data, error } = await supabase
+      .from("add_banner_group")
+      .insert([{ ...bannerGroup, image_url: imageUrl }])
+      .select()
+      .single();
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateBannerGroup(id, bannerGroup, imageFile) {
+  try {
+    let updateData = { ...bannerGroup };
+
+    if (imageFile) {
+      const fileExt = imageFile.name.split(".").pop();
+      const fileName = `${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("addBannerGroup")
+        .upload(fileName, imageFile, {
+          contentType: imageFile.type,
+          upsert: true,
+        });
+
+      if (uploadError) {
+        return { success: false, error: uploadError.message };
+      }
+
+      const { data: urlData } = supabase.storage
+        .from("addBannerGroup")
+        .getPublicUrl(fileName);
+      updateData.image_url = urlData.publicUrl;
+    }
+
+    const { data, error } = await supabase
+      .from("add_banner_group")
+      .update(updateData)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function deleteBannerGroup(id) {
+  try {
+    const { error } = await supabase
+      .from("add_banner_group")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getBannerGroupById(id) {
+  try {
+    const { data, error } = await supabase
+      .from("add_banner_group")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// BANNER GROUP PRODUCT FUNCTIONS
+export async function mapProductToBannerGroup(productId, bannerGroupId) {
+  try {
+    const { error } = await supabase
+      .from("add_banner_group_product")
+      .insert([{ product_id: productId, banner_group_id: bannerGroupId }]);
+
+    if (error) {
+      if (error.code === "23505") {
+        return { success: false, error: "Mapping already exists." };
+      }
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function removeProductFromBannerGroup(productId, bannerGroupId) {
+  try {
+    const { error } = await supabase
+      .from("add_banner_group_product")
+      .delete()
+      .eq("product_id", productId)
+      .eq("banner_group_id", bannerGroupId);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getBannerGroupsForProduct(productId) {
+  try {
+    const { data, error } = await supabase
+      .from("add_banner_group_product")
+      .select(
+        `
+        banner_group_id,
+        add_banner_group:banner_group_id (
+          id,
+          name,
+          image_url
+        )
+      `
+      )
+      .eq("product_id", productId);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getProductsForBannerGroup(bannerGroupId) {
+  try {
+    const { data, error } = await supabase
+      .from("add_banner_group_product")
+      .select(
+        `
+        products (
+          id,
+          name,
+          active,
+          price,
+          image_url
+        )
+      `
+      )
+      .eq("banner_group_id", bannerGroupId);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return {
+      success: true,
+      products: data?.map((item) => item.products).filter(Boolean) || [],
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// VIDEO CARD FUNCTIONS
+export async function getAllVideoCards() {
+  try {
+    const { data, error } = await supabase
+      .from("video_cards")
+      .select("*")
+      .order("position", { ascending: true });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function addVideoCard(videoCard) {
+  try {
+    const { data, error } = await supabase
+      .from("video_cards")
+      .insert([videoCard])
+      .select()
+      .single();
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateVideoCard(id, videoCard) {
+  try {
+    const { data, error } = await supabase
+      .from("video_cards")
+      .update(videoCard)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function deleteVideoCard(id) {
+  try {
+    const { error } = await supabase.from("video_cards").delete().eq("id", id);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// BRAND FUNCTIONS
+export async function getAllBrands() {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("brand")
+      .select("*")
+      .order("name", { ascending: true });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getBrand(id) {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("brand")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, brand: data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function addBrand(brand, imageFile) {
+  try {
+    let imageUrl = null;
+
+    if (imageFile) {
+      const fileExt = imageFile.name.split(".").pop();
+      const fileName = `${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("brand")
+        .upload(fileName, imageFile, {
+          contentType: imageFile.type,
+          upsert: true,
+        });
+
+      if (uploadError) {
+        return { success: false, error: uploadError.message };
+      }
+
+      const { data: urlData } = supabase.storage
+        .from("brand")
+        .getPublicUrl(fileName);
+      imageUrl = urlData.publicUrl;
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("brand")
+      .insert([{ ...brand, image_url: imageUrl }])
+      .select()
+      .single();
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateBrand(id, brand, imageFile) {
+  try {
+    let updateData = { ...brand };
+
+    if (imageFile) {
+      const fileExt = imageFile.name.split(".").pop();
+      const fileName = `${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("brand")
+        .upload(fileName, imageFile, {
+          contentType: imageFile.type,
+          upsert: true,
+        });
+
+      if (uploadError) {
+        return { success: false, error: uploadError.message };
+      }
+
+      const { data: urlData } = supabase.storage
+        .from("brand")
+        .getPublicUrl(fileName);
+      updateData.image_url = urlData.publicUrl;
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("brand")
+      .update(updateData)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function deleteBrand(id) {
+  try {
+    const { error } = await supabaseAdmin.from("brand").delete().eq("id", id);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getSingleBrand(id) {
+  try {
+    const { data, error } = await supabase
+      .from("brand")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// BRAND PRODUCT FUNCTIONS
+export async function mapProductToBrand(productId, brandId) {
+  try {
+    const { error } = await supabaseAdmin
+      .from("product_brand")
+      .insert([{ product_id: productId, brand_id: brandId }]);
+
+    if (error) {
+      if (error.code === "23505") {
+        return { success: false, error: "Mapping already exists." };
+      }
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function removeProductFromBrand(productId, brandId) {
+  try {
+    const { error } = await supabaseAdmin
+      .from("product_brand")
+      .delete()
+      .eq("product_id", productId)
+      .eq("brand_id", brandId);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getBrandsForProduct(productId) {
+  try {
+    const { data, error } = await supabase
+      .from("product_brand")
+      .select(
+        `
+        brand_id,
+        brand:brand_id (
+          id,
+          name,
+          image_url
+        )
+      `
+      )
+      .eq("product_id", productId);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getProductsForBrand(brandId) {
+  try {
+    const { data, error } = await supabase
+      .from("product_brand")
+      .select(
+        `
+        products (
+          id,
+          name,
+          active,
+          price,
+          image_url
+        )
+      `
+      )
+      .eq("brand_id", brandId);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return {
+      success: true,
+      products: data?.map((item) => item.products).filter(Boolean) || [],
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// PRODUCT SECTIONS MANAGEMENT
+export async function getAllProductSections() {
+  try {
+    const { data, error } = await supabase
+      .from("product_sections")
+      .select("*")
+      .order("display_order", { ascending: true });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, sections: data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getActiveProductSections() {
+  try {
+    const { data, error } = await supabase
+      .from("product_sections")
+      .select("*")
+      .eq("is_active", true)
+      .order("display_order", { ascending: true });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, sections: data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateProductSection(id, sectionData) {
+  try {
+    const { data, error } = await supabase
+      .from("product_sections")
+      .update(sectionData)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, section: data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function toggleProductSectionStatus(id) {
+  try {
+    // First get current status
+    const { data: currentSection, error: fetchError } = await supabase
+      .from("product_sections")
+      .select("is_active")
+      .eq("id", id)
+      .single();
+
+    if (fetchError) {
+      return { success: false, error: fetchError.message };
+    }
+
+    // Toggle the status
+    const newStatus = !currentSection.is_active;
+
+    const { data, error } = await supabase
+      .from("product_sections")
+      .update({ is_active: newStatus })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return {
+      success: true,
+      section: data,
+      message: `Section ${
+        newStatus ? "activated" : "deactivated"
+      } successfully`,
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function updateProductSectionOrder(sectionsOrder) {
+  try {
+    // Update each section's display_order
+    const updates = sectionsOrder.map(({ id, display_order }) =>
+      supabase.from("product_sections").update({ display_order }).eq("id", id)
+    );
+
+    const results = await Promise.all(updates);
+
+    // Check if any update failed
+    const failedUpdate = results.find((result) => result.error);
+    if (failedUpdate) {
+      return { success: false, error: failedUpdate.error.message };
+    }
+
+    return { success: true, message: "Section order updated successfully" };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// ZONE STATISTICS AND DETAILS
+
+// Get zone statistics
+export async function getZoneStatistics() {
+  try {
+    // Get total zones count
+    const { data: zones, error: zonesError } = await supabase
+      .from("delivery_zones")
+      .select("id, name, is_active, is_nationwide")
+      .eq("is_active", true);
+
+    if (zonesError) {
+      return { success: false, error: zonesError.message };
+    }
+
+    // Get zones with pincodes count
+    const { data: zonesWithPincodes, error: pincodesError } = await supabase
+      .from("delivery_zones")
+      .select(
+        `
+        id,
+        name,
+        is_active,
+        is_nationwide,
+        zone_pincodes!inner(pincode)
+      `
+      )
+      .eq("is_active", true);
+
+    if (pincodesError) {
+      return { success: false, error: pincodesError.message };
+    }
+
+    // Calculate statistics
+    const totalZones = zones?.length || 0;
+    const nationwideZones = zones?.filter((z) => z.is_nationwide).length || 0;
+    const regionalZones = totalZones - nationwideZones;
+    const zonesWithPincodesCount = zonesWithPincodes?.length || 0;
+
+    // Get total pincodes count
+    const { count: totalPincodes, error: countError } = await supabase
+      .from("zone_pincodes")
+      .select("*", { count: "exact", head: true })
+      .eq("is_active", true);
+
+    if (countError) {
+      return { success: false, error: countError.message };
+    }
+
+    const statistics = {
+      total_zones: totalZones,
+      nationwide_zones: nationwideZones,
+      regional_zones: regionalZones,
+      zones_with_pincodes: zonesWithPincodesCount,
+      total_pincodes: totalPincodes || 0,
+      zones_without_pincodes: totalZones - zonesWithPincodesCount,
+    };
+
+    return { success: true, data: statistics };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Get single zone details by ID
+export async function getZoneDetails(zoneId) {
+  try {
+    const { data: zone, error: zoneError } = await supabase
+      .from("delivery_zones")
+      .select(
+        `
+        id,
+        name,
+        is_active,
+        is_nationwide,
+        created_at,
+        updated_at,
+        zone_pincodes (
+          id,
+          pincode,
+          city,
+          state,
+          is_active
+        )
+      `
+      )
+      .eq("id", zoneId)
+      .single();
+
+    if (zoneError) {
+      return { success: false, error: zoneError.message };
+    }
+
+    if (!zone) {
+      return { success: false, error: "Zone not found" };
+    }
+
+    // Get warehouse assignments for this zone
+    const { data: warehouseZones, error: warehouseError } = await supabase
+      .from("warehouse_zones")
+      .select(
+        `
+        warehouse_id,
+        priority,
+        is_active,
+        warehouses (
+          id,
+          name,
+          type,
+          location
+        )
+      `
+      )
+      .eq("zone_id", zoneId)
+      .eq("is_active", true);
+
+    if (warehouseError) {
+      return { success: false, error: warehouseError.message };
+    }
+
+    // Format the response
+    const zoneDetails = {
+      ...zone,
+      pincodes_count: zone.zone_pincodes?.length || 0,
+      assigned_warehouses: warehouseZones || [],
+      warehouses_count: warehouseZones?.length || 0,
+    };
+
+    return { success: true, data: zoneDetails };
   } catch (error) {
     return { success: false, error: error.message };
   }
