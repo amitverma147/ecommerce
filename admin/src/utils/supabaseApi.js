@@ -2719,15 +2719,12 @@ export async function getAllZones(options = {}) {
           ? "http://localhost:8000/api"
           : "https://ecommerce-pddk.vercel.app/api");
 
-    const response = await fetch(
-      `${API_BASE_URL}/zones?${params}`,
-      {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    const response = await fetch(`${API_BASE_URL}/zones?${params}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
 
     if (!response.ok) {
       const errorData = await response.json();
