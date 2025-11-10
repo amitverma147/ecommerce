@@ -82,6 +82,8 @@ const allowedOrigins = [
   "https://big-best-frontend.onrender.com", // Render.com deployment - IMPORTANT for production
   "https://admin-eight-ruddy.vercel.app",
   "https://big-best-frontend.vercel.app", // Vercel deployment
+  "https://ecommerce-p9j9.vercel.app/",
+  "https://ecommerce-p4lj.vercel.app/"
 ];
 
 const corsOptions = {
