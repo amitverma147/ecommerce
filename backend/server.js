@@ -58,37 +58,52 @@ import inventoryRoutes from "./routes/inventoryRoutes.js";
 import videoCardRoutes from "./routes/videoCardRoutes.js";
 import shopByStoreRoutes from "./routes/shopByStoreRoutes.js";
 import productSectionRoutes from "./routes/productSectionRoutes.js";
+import zoneRoutes from "./routes/zoneRoutes.js";
 import promoBannerRoutes from "./routes/promoBannerRoutes.js";
 import storeSectionMappingRoutes from "./routes/storeSectionMappingRoutes.js";
+import bulkWholesaleRoutes from "./routes/bulkWholesaleRoutes.js";
+import codOrderRoutes from "./routes/codOrderRoutes.js";
+import stockRoutes from "./routes/stockRoutes.js";
+import uploadRoutes from "./routes/uploadRoutes.js";
 
 const app = express();
 const PORT = process.env.PORT || 8000;
 const allowedOrigins = [
   "http://localhost:3000", // Next.js frontend
   "http://localhost:3001", // Next.js frontend (alternative port)
-  "http://localhost:5173",
-  "http://localhost:5174",
+  "http://localhost:5173", // Vite dev server
+  "http://localhost:5174", // Vite dev server (alternative)
   "https://big-best-admin.vercel.app", // Admin panel (without trailing slash)
   "https://big-best-admin.vercel.app/", // Admin panel (with trailing slash)
   "https://ecommerce-umber-five-95.vercel.app",
   "https://admin-eight-flax.vercel.app",
   "https://ecommerce-six-brown-12.vercel.app",
   "https://www.bigbestmart.com",
+  "https://big-best-frontend.onrender.com", // Render.com deployment - IMPORTANT for production
   "https://admin-eight-ruddy.vercel.app",
-  "https://big-best-frontend.vercel.app", // New deployed frontend
+  "https://big-best-frontend.vercel.app", // Vercel deployment
 ];
 
 const corsOptions = {
   origin: function (origin, callback) {
+    console.log(`🔍 CORS check - Origin: ${origin || "no origin"}`);
+
     // allow requests with no origin like mobile apps or curl
-    if (!origin) return callback(null, true);
+    if (!origin) {
+      console.log("✅ No origin - allowing request");
+      return callback(null, true);
+    }
+
     if (allowedOrigins.includes(origin)) {
+      console.log(`✅ Origin allowed: ${origin}`);
       return callback(null, true);
     } else {
-      return callback(new Error("Not allowed by CORS"));
+      console.log(`❌ Origin BLOCKED: ${origin}`);
+      console.log(`📋 Allowed origins: ${allowedOrigins.join(", ")}`);
+      // Return null, false instead of throwing error to avoid 500 status
+      return callback(null, false);
     }
   },
-  credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   exposedHeaders: ["Authorization"],
   allowedHeaders: [
@@ -100,6 +115,7 @@ const corsOptions = {
     "Cache-Control",
     "X-File-Name",
   ],
+  credentials: true,
 };
 /* app.use(cors({
    origin: function (origin, callback) {
@@ -115,7 +131,32 @@ const corsOptions = {
   credentials: true,
 })); */
 
-app.use(cors(corsOptions));
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // allow requests with no origin like mobile apps or curl
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      } else {
+        // Return null, false instead of throwing error to avoid 500 status
+        return callback(null, false);
+      }
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    exposedHeaders: ["Authorization"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "Accept",
+      "Origin",
+      "Cache-Control",
+      "X-File-Name",
+    ],
+    credentials: true,
+  })
+);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -123,7 +164,7 @@ app.use(cookieParser());
 
 app.use("/api/business", authRoutes);
 app.use("/api/geo-address", geoAddressRoute);
-app.use("/api/warehouse", warehouseRoute);
+app.use("/api/warehouses", warehouseRoute);
 app.use("/api/productwarehouse", productWarehouseRoute);
 app.use("/api/productsroute", productsRoute);
 app.use("/api/locationsroute", locationRoute);
@@ -175,6 +216,20 @@ app.use("/api/shop-by-stores", shopByStoreRoutes);
 app.use("/api/product-sections", productSectionRoutes);
 app.use("/api/promo-banner", promoBannerRoutes);
 app.use("/api/store-section-mappings", storeSectionMappingRoutes);
+app.use("/api/bulk-wholesale", bulkWholesaleRoutes);
+// COD Orders routes with logging middleware
+app.use(
+  "/api/cod-orders",
+  (req, res, next) => {
+    console.log(`COD Orders API: ${req.method} ${req.originalUrl}`);
+    console.log("Request Body:", req.body);
+    next();
+  },
+  codOrderRoutes
+);
+app.use("/api/zones", zoneRoutes);
+app.use("/api/stock", stockRoutes);
+app.use("/api/upload", uploadRoutes);
 
 // Health check route
 app.get("/api/health", (req, res) => {
@@ -234,6 +289,10 @@ if (missingEnvVars.length > 0) {
   console.log("✅ All required environment variables are set");
 }
 
+// Log CORS configuration for debugging
+console.log(`🌐 CORS configured for ${allowedOrigins.length} origins:`);
+allowedOrigins.forEach((origin) => console.log(`   - ${origin}`));
+
 // Export the app for Vercel
 export default app;
 
@@ -246,6 +305,9 @@ if (process.env.NODE_ENV !== "production") {
       `💳 Razorpay Mode: ${
         process.env.RAZORPAY_KEY_ID?.startsWith("rzp_test_") ? "TEST" : "LIVE"
       }`
+    );
+    console.log(
+      `🔗 Supabase URL: ${process.env.SUPABASE_URL || "Not configured"}`
     );
   });
 }

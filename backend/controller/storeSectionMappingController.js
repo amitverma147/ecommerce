@@ -234,6 +234,7 @@ export async function deleteMapping(req, res) {
 export async function getProductsBySection(req, res) {
   try {
     const { section_key } = req.params;
+    console.log("🔍 Getting products for section:", section_key);
 
     // Get section info
     const { data: sectionData, error: sectionError } = await supabase
@@ -243,11 +244,21 @@ export async function getProductsBySection(req, res) {
       .eq("is_active", true)
       .single();
 
-    if (sectionError || !sectionData) {
+    if (sectionError) {
+      console.error("❌ Section query error:", sectionError);
+      return res
+        .status(400)
+        .json({ success: false, error: sectionError.message });
+    }
+
+    if (!sectionData) {
+      console.log("⚠️ Section not found:", section_key);
       return res
         .status(404)
         .json({ success: false, error: "Section not found" });
     }
+
+    console.log("✅ Found section:", sectionData);
 
     let allProducts = [];
     let directMappingsData = null;
@@ -265,10 +276,14 @@ export async function getProductsBySection(req, res) {
       .eq("mapping_type", "section_product")
       .eq("is_active", true);
 
-    if (!directMappingsError && directMappings) {
+    if (directMappingsError) {
+      console.error("❌ Direct mappings query error:", directMappingsError);
+      // Don't return error here, continue with store mappings
+    } else if (directMappings) {
       directMappingsData = directMappings;
       const directProducts = directMappings.map((mapping) => mapping.products);
       allProducts = [...allProducts, ...directProducts];
+      console.log("✅ Found direct products:", directProducts.length);
     }
 
     // Also get products from stores mapped to this section
@@ -280,12 +295,12 @@ export async function getProductsBySection(req, res) {
         .eq("mapping_type", "store_section")
         .eq("is_active", true);
 
-    if (
-      !storeMappingsError &&
-      storeMappingsData &&
-      storeMappingsData.length > 0
-    ) {
+    if (storeMappingsError) {
+      console.error("❌ Store mappings query error:", storeMappingsError);
+      // Don't return error here, continue
+    } else if (storeMappingsData && storeMappingsData.length > 0) {
       const storeIds = storeMappingsData.map((mapping) => mapping.store_id);
+      console.log("✅ Found store mappings:", storeIds);
 
       // Get products from these stores (limit to recent/top products)
       const { data: storeProducts, error: storeProductsError } = await supabase
@@ -296,9 +311,13 @@ export async function getProductsBySection(req, res) {
         .order("created_at", { ascending: false })
         .limit(10); // Limit to 10 products per store-section
 
-      if (!storeProductsError && storeProducts) {
+      if (storeProductsError) {
+        console.error("❌ Store products query error:", storeProductsError);
+        // Don't return error here
+      } else if (storeProducts) {
         storeProductsData = storeProducts;
         allProducts = [...allProducts, ...storeProducts];
+        console.log("✅ Found store products:", storeProducts.length);
       }
     }
 
@@ -307,6 +326,8 @@ export async function getProductsBySection(req, res) {
       (product, index, self) =>
         index === self.findIndex((p) => p.id === product.id)
     );
+
+    console.log("✅ Total unique products:", uniqueProducts.length);
 
     res.json({
       success: true,
@@ -319,7 +340,7 @@ export async function getProductsBySection(req, res) {
       },
     });
   } catch (err) {
-    console.error("Get products by section error:", err);
+    console.error("💥 Get products by section error:", err);
     res.status(500).json({ success: false, error: err.message });
   }
 }

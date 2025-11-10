@@ -3,6 +3,8 @@ import { supabase } from "../config/supabaseClient.js";
 // B2B Bulk Order Enquiry Functions
 export const createBulkOrderEnquiry = async (req, res) => {
   try {
+    console.log('Creating bulk order enquiry:', req.body);
+    
     const {
       companyName,
       contactPerson,
@@ -14,41 +16,55 @@ export const createBulkOrderEnquiry = async (req, res) => {
       expectedPrice,
       deliveryTimeline,
       gstNumber,
-      address
+      address,
+      variant_id,
+      variant_details
     } = req.body;
+
+    // Validation
+    if (!companyName || !contactPerson || !email || !phone || !productName || !quantity) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required fields: companyName, contactPerson, email, phone, productName, quantity' 
+      });
+    }
+
+    const enquiryData = {
+      company_name: String(companyName),
+      contact_person: String(contactPerson),
+      email: String(email),
+      phone: String(phone),
+      product_name: String(productName),
+      quantity: parseInt(quantity),
+      description: description ? String(description) : null,
+      expected_price: expectedPrice ? parseFloat(expectedPrice) : null,
+      delivery_timeline: deliveryTimeline ? String(deliveryTimeline) : null,
+      gst_number: gstNumber ? String(gstNumber) : null,
+      address: address ? String(address) : null,
+      variant_id: variant_id || null,
+      variant_details: variant_details ? String(variant_details) : null,
+      status: 'Pending'
+    };
 
     const { data, error } = await supabase
       .from('bulk_order_enquiries')
-      .insert([{
-        company_name: companyName,
-        contact_person: contactPerson,
-        email,
-        phone,
-        product_name: productName,
-        quantity,
-        description,
-        expected_price: expectedPrice,
-        delivery_timeline: deliveryTimeline,
-        gst_number: gstNumber,
-        address,
-        status: 'Pending'
-      }])
+      .insert([enquiryData])
       .select()
       .single();
 
     if (error) {
+      console.error('Database Error:', error);
       return res.status(500).json({ success: false, error: error.message });
     }
 
-    // Send email notification to admin (optional - implement if needed)
-    // await sendBulkOrderNotificationToAdmin(data);
-
-    return res.json({ 
+    console.log('Bulk order enquiry created successfully:', data);
+    return res.status(201).json({ 
       success: true, 
       message: 'Bulk order enquiry submitted successfully',
       enquiry: data 
     });
   } catch (error) {
+    console.error('Server Error:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -56,13 +72,15 @@ export const createBulkOrderEnquiry = async (req, res) => {
 export const getBulkOrderEnquiries = async (req, res) => {
   try {
     const { page = 1, limit = 10, status } = req.query;
-    const offset = (page - 1) * limit;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    
+    console.log('Fetching bulk order enquiries - Page:', page, 'Limit:', limit, 'Status:', status);
 
     let query = supabase
       .from('bulk_order_enquiries')
       .select('*', { count: 'exact' })
       .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+      .range(offset, offset + parseInt(limit) - 1);
 
     if (status && status !== 'all') {
       query = query.eq('status', status);
@@ -71,20 +89,24 @@ export const getBulkOrderEnquiries = async (req, res) => {
     const { data, error, count } = await query;
 
     if (error) {
+      console.error('Database Error:', error);
       return res.status(500).json({ success: false, error: error.message });
     }
 
+    console.log(`Found ${count} total enquiries, returning ${data.length} for page ${page}`);
+    
     return res.json({
       success: true,
-      enquiries: data,
+      enquiries: data || [],
       pagination: {
         total: count,
         page: parseInt(page),
         limit: parseInt(limit),
-        totalPages: Math.ceil(count / limit)
+        totalPages: Math.ceil(count / parseInt(limit))
       }
     });
   } catch (error) {
+    console.error('Server Error:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -93,24 +115,45 @@ export const updateBulkOrderEnquiry = async (req, res) => {
   try {
     const { id } = req.params;
     const { status, adminNotes } = req.body;
+    
+    console.log(`Updating bulk enquiry ${id} - Status: ${status}`);
+
+    // Validate status
+    const validStatuses = ['Pending', 'In Progress', 'Quoted', 'Approved', 'Rejected', 'Completed'];
+    if (status && !validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid status. Valid statuses: ${validStatuses.join(', ')}`
+      });
+    }
+
+    const updateData = {
+      last_updated: new Date().toISOString()
+    };
+    
+    if (status) updateData.status = status;
+    if (adminNotes !== undefined) updateData.admin_notes = adminNotes;
 
     const { data, error } = await supabase
       .from('bulk_order_enquiries')
-      .update({
-        status,
-        admin_notes: adminNotes,
-        last_updated: new Date().toISOString()
-      })
-      .eq('id', id)
+      .update(updateData)
+      .eq('id', parseInt(id))
       .select()
       .single();
 
     if (error) {
+      console.error('Database Error:', error);
       return res.status(500).json({ success: false, error: error.message });
     }
 
+    if (!data) {
+      return res.status(404).json({ success: false, error: 'Bulk order enquiry not found' });
+    }
+
+    console.log('Bulk enquiry updated successfully:', data);
     return res.json({ success: true, enquiry: data });
   } catch (error) {
+    console.error('Server Error:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -118,6 +161,8 @@ export const updateBulkOrderEnquiry = async (req, res) => {
 // Wholesale Bulk Order Functions (Integrated Checkout)
 export const createWholesaleBulkOrder = async (req, res) => {
   try {
+    console.log('Creating wholesale bulk order:', req.body);
+    
     const {
       user_id,
       items,
@@ -130,50 +175,74 @@ export const createWholesaleBulkOrder = async (req, res) => {
       gst_number
     } = req.body;
 
+    // Validation
+    if (!total_price || !email || !contact || !items || items.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing required fields: total_price, email, contact, items' 
+      });
+    }
+
+    const orderData = {
+      user_id: user_id || null,
+      total_price: parseFloat(total_price),
+      email: String(email),
+      contact: String(contact),
+      company_name: company_name ? String(company_name) : null,
+      gst_number: gst_number ? String(gst_number) : null,
+      payment_status: 'PAYMENT_PENDING',
+      order_status: 'pending'
+    };
+
+    // Add shipping address if provided
+    if (shipping_address) {
+      orderData.shipping_first_name = shipping_address.firstName || null;
+      orderData.shipping_last_name = shipping_address.lastName || null;
+      orderData.shipping_full_address = shipping_address.fullAddress || null;
+      orderData.shipping_apartment = shipping_address.apartment || null;
+      orderData.shipping_city = shipping_address.city || null;
+      orderData.shipping_country = shipping_address.country || null;
+      orderData.shipping_state = shipping_address.state || null;
+      orderData.shipping_zip_code = shipping_address.zipCode || null;
+    }
+
+    // Add billing address if provided
+    if (billing_address) {
+      orderData.billing_first_name = billing_address.firstName || null;
+      orderData.billing_last_name = billing_address.lastName || null;
+      orderData.billing_full_address = billing_address.fullAddress || null;
+      orderData.billing_apartment = billing_address.apartment || null;
+      orderData.billing_city = billing_address.city || null;
+      orderData.billing_country = billing_address.country || null;
+      orderData.billing_state = billing_address.state || null;
+      orderData.billing_zip_code = billing_address.zipCode || null;
+    }
+
     // Create wholesale bulk order
     const { data: order, error: orderError } = await supabase
       .from('wholesale_bulk_orders')
-      .insert([{
-        user_id,
-        total_price,
-        email,
-        contact,
-        company_name,
-        gst_number,
-        shipping_first_name: shipping_address.firstName,
-        shipping_last_name: shipping_address.lastName,
-        shipping_full_address: shipping_address.fullAddress,
-        shipping_apartment: shipping_address.apartment,
-        shipping_city: shipping_address.city,
-        shipping_country: shipping_address.country,
-        shipping_state: shipping_address.state,
-        shipping_zip_code: shipping_address.zipCode,
-        billing_first_name: billing_address?.firstName,
-        billing_last_name: billing_address?.lastName,
-        billing_full_address: billing_address?.fullAddress,
-        billing_apartment: billing_address?.apartment,
-        billing_city: billing_address?.city,
-        billing_country: billing_address?.country,
-        billing_state: billing_address?.state,
-        billing_zip_code: billing_address?.zipCode,
-        payment_status: 'PAYMENT_PENDING'
-      }])
+      .insert([orderData])
       .select()
       .single();
 
     if (orderError) {
+      console.error('Order Creation Error:', orderError);
       return res.status(500).json({ success: false, error: orderError.message });
     }
 
-    // Create order items
+    // Create order items with variant support
     const orderItems = items.map(item => ({
       wholesale_bulk_order_id: order.id,
-      product_id: item.product_id,
-      quantity: item.quantity,
-      price: item.price,
-      is_bulk_order: item.is_bulk_order || true,
-      bulk_range: item.bulk_range,
-      original_price: item.original_price
+      product_id: String(item.product_id || item.id),
+      variant_id: item.variant_id || null,
+      variant_name: item.variant_name || null,
+      variant_weight: item.variant_weight || null,
+      variant_unit: item.variant_unit || null,
+      quantity: parseInt(item.quantity),
+      price: parseFloat(item.price),
+      is_bulk_order: item.is_bulk_order !== undefined ? item.is_bulk_order : true,
+      bulk_range: item.bulk_range || null,
+      original_price: item.original_price ? parseFloat(item.original_price) : null
     }));
 
     const { error: itemsError } = await supabase
@@ -181,6 +250,7 @@ export const createWholesaleBulkOrder = async (req, res) => {
       .insert(orderItems);
 
     if (itemsError) {
+      console.error('Order Items Error:', itemsError);
       return res.status(500).json({ success: false, error: itemsError.message });
     }
 
@@ -189,12 +259,14 @@ export const createWholesaleBulkOrder = async (req, res) => {
       await supabase.from('cart_items').delete().eq('user_id', user_id);
     }
 
-    return res.json({ 
+    console.log('Wholesale bulk order created successfully:', order);
+    return res.status(201).json({ 
       success: true, 
       message: 'Bulk order created successfully',
       order 
     });
   } catch (error) {
+    console.error('Server Error:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -202,7 +274,9 @@ export const createWholesaleBulkOrder = async (req, res) => {
 export const getWholesaleBulkOrders = async (req, res) => {
   try {
     const { page = 1, limit = 10, status } = req.query;
-    const offset = (page - 1) * limit;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    
+    console.log('Fetching wholesale bulk orders - Page:', page, 'Limit:', limit, 'Status:', status);
 
     let query = supabase
       .from('wholesale_bulk_orders')
@@ -215,13 +289,12 @@ export const getWholesaleBulkOrders = async (req, res) => {
           price,
           is_bulk_order,
           bulk_range,
-          original_price,
-          products(id, name, image)
+          original_price
         )
       `, { count: 'exact' })
       .eq('is_deleted', false)
       .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+      .range(offset, offset + parseInt(limit) - 1);
 
     if (status && status !== 'all') {
       query = query.eq('order_status', status);
@@ -230,20 +303,24 @@ export const getWholesaleBulkOrders = async (req, res) => {
     const { data, error, count } = await query;
 
     if (error) {
+      console.error('Database Error:', error);
       return res.status(500).json({ success: false, error: error.message });
     }
 
+    console.log(`Found ${count} total wholesale orders, returning ${data.length} for page ${page}`);
+    
     return res.json({
       success: true,
-      orders: data,
+      orders: data || [],
       pagination: {
         total: count,
         page: parseInt(page),
         limit: parseInt(limit),
-        totalPages: Math.ceil(count / limit)
+        totalPages: Math.ceil(count / parseInt(limit))
       }
     });
   } catch (error) {
+    console.error('Server Error:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -252,24 +329,55 @@ export const updateWholesaleBulkOrder = async (req, res) => {
   try {
     const { id } = req.params;
     const { order_status, payment_status } = req.body;
+    
+    console.log(`Updating wholesale bulk order ${id} - Order Status: ${order_status}, Payment Status: ${payment_status}`);
 
-    const updateData = {};
-    if (order_status) updateData.order_status = order_status;
-    if (payment_status) updateData.payment_status = payment_status;
+    const updateData = {
+      updated_at: new Date().toISOString()
+    };
+    
+    if (order_status) {
+      const validOrderStatuses = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
+      if (!validOrderStatuses.includes(order_status)) {
+        return res.status(400).json({
+          success: false,
+          error: `Invalid order status. Valid statuses: ${validOrderStatuses.join(', ')}`
+        });
+      }
+      updateData.order_status = order_status;
+    }
+    
+    if (payment_status) {
+      const validPaymentStatuses = ['PAYMENT_PENDING', 'PAYMENT_SUCCESS', 'PAYMENT_FAILED', 'REFUNDED'];
+      if (!validPaymentStatuses.includes(payment_status)) {
+        return res.status(400).json({
+          success: false,
+          error: `Invalid payment status. Valid statuses: ${validPaymentStatuses.join(', ')}`
+        });
+      }
+      updateData.payment_status = payment_status;
+    }
 
     const { data, error } = await supabase
       .from('wholesale_bulk_orders')
       .update(updateData)
-      .eq('id', id)
+      .eq('id', parseInt(id))
       .select()
       .single();
 
     if (error) {
+      console.error('Database Error:', error);
       return res.status(500).json({ success: false, error: error.message });
     }
 
+    if (!data) {
+      return res.status(404).json({ success: false, error: 'Wholesale bulk order not found' });
+    }
+
+    console.log('Wholesale bulk order updated successfully:', data);
     return res.json({ success: true, order: data });
   } catch (error) {
+    console.error('Server Error:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
 };

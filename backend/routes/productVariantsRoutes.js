@@ -6,22 +6,17 @@ import {
   deleteProductVariant,
   getProductsWithVariants,
 } from "../controller/productVariantsController.js";
+import { authenticate } from "../middleware/authenticate.js";
 
 const router = express.Router();
 
-// Get all products with variants
+// Public routes - no authentication required
 router.get("/products-with-variants", getProductsWithVariants);
-
-// Get variants for a specific product
 router.get("/product/:productId/variants", getProductVariants);
 
-// Add variant to product
-router.post("/product/:productId/variants", addProductVariant);
-
-// Update variant
-router.put("/variant/:variantId", updateProductVariant);
-
-// Delete variant
-router.delete("/variant/:variantId", deleteProductVariant);
+// Protected routes - authentication required
+router.post("/product/:productId/variants", authenticate, addProductVariant);
+router.put("/variant/:variantId", authenticate, updateProductVariant);
+router.delete("/variant/:variantId", authenticate, deleteProductVariant);
 
 export default router;

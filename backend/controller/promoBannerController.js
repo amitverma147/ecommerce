@@ -3,6 +3,8 @@ import { supabase } from "../config/supabaseClient.js";
 // Get all promo banners
 export const getAllPromoBanners = async (req, res) => {
   try {
+    console.log('Fetching promo banners...');
+    
     const { data, error } = await supabase
       .from("promo_banners")
       .select("*")
@@ -10,15 +12,27 @@ export const getAllPromoBanners = async (req, res) => {
       .order("display_order", { ascending: true });
 
     if (error) {
-      return res.status(500).json({ error: error.message });
+      console.error('Supabase error:', error);
+      return res.status(500).json({ 
+        success: false,
+        error: error.message 
+      });
     }
 
+    console.log('Banners fetched successfully:', data?.length || 0);
+    
     res.status(200).json({
       success: true,
       banners: data || [],
+      count: data?.length || 0
     });
   } catch (error) {
-    res.status(500).json({ error: "Internal server error" });
+    console.error('Server error in getAllPromoBanners:', error);
+    res.status(500).json({ 
+      success: false,
+      error: "Internal server error",
+      details: error.message 
+    });
   }
 };
 

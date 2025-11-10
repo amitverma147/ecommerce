@@ -7,6 +7,42 @@ import {
   createAdminCancelNotification,
 } from "./NotificationHelpers.js";
 
+// Helper function to find warehouse for product
+const findWarehouseForProduct = async (productId, pincode, productType) => {
+  try {
+    // Get product details
+    const { data: product, error: productError } = await supabase
+      .from("products")
+      .select("id, name, product_type")
+      .eq("id", productId)
+      .single();
+
+    if (productError) {
+      console.error("Error fetching product:", productError);
+      return null;
+    }
+
+    // Use the database function to find warehouse
+    const { data: warehouses, error } = await supabase.rpc(
+      "find_warehouse_for_order",
+      {
+        customer_pincode: pincode,
+        product_type: product.product_type || "nationwide",
+      }
+    );
+
+    if (error) {
+      console.error("Error finding warehouse:", error);
+      return null;
+    }
+
+    return warehouses && warehouses.length > 0 ? warehouses[0] : null;
+  } catch (error) {
+    console.error("Error in findWarehouseForProduct:", error);
+    return null;
+  }
+};
+
 /** Get all orders (admin usage) */
 export const getAllOrders = async (req, res) => {
   const { page = 1, limit = 10 } = req.query;
@@ -14,7 +50,8 @@ export const getAllOrders = async (req, res) => {
 
   const { data, error, count } = await supabase
     .from("orders")
-    .select(`
+    .select(
+      `
       *,
       users(name, email, phone),
       order_items(
@@ -26,22 +63,24 @@ export const getAllOrders = async (req, res) => {
         bulk_range,
         original_price
       )
-    `, { count: 'exact' })
+    `,
+      { count: "exact" }
+    )
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
   if (error)
     return res.status(500).json({ success: false, error: error.message });
-  
-  return res.json({ 
-    success: true, 
+
+  return res.json({
+    success: true,
     orders: data,
     pagination: {
       total: count,
       page: parseInt(page),
       limit: parseInt(limit),
-      totalPages: Math.ceil(count / limit)
-    }
+      totalPages: Math.ceil(count / limit),
+    },
   });
 };
 
@@ -110,6 +149,10 @@ export const placeOrder = async (req, res) => {
   const { user_id, items, subtotal, shipping, total, address, payment_method } =
     req.body;
 
+  // Extract pincode from address (assuming it's at the end)
+  const addressParts = address.split(",");
+  const pincode = addressParts[addressParts.length - 2]?.trim() || "000000";
+
   const { data: order, error: orderError } = await supabase
     .from("orders")
     .insert([{ user_id, subtotal, shipping, total, address, payment_method }])
@@ -119,12 +162,45 @@ export const placeOrder = async (req, res) => {
   if (orderError)
     return res.status(500).json({ success: false, error: orderError.message });
 
-  const orderItemsToInsert = items.map((item) => ({
-    order_id: order.id,
-    product_id: item.product_id,
-    quantity: item.quantity,
-    price: item.price,
-  }));
+  // Process order items with warehouse assignment
+  const orderItemsToInsert = [];
+  const warehouseAssignments = [];
+
+  for (const item of items) {
+    // Find appropriate warehouse for this product
+    const warehouseInfo = await findWarehouseForProduct(
+      item.product_id,
+      pincode,
+      item.product_type
+    );
+
+    if (!warehouseInfo) {
+      console.warn(
+        `No warehouse found for product ${item.product_id}, using default`
+      );
+      // Continue with order but log the issue
+    }
+
+    orderItemsToInsert.push({
+      order_id: order.id,
+      product_id: item.product_id,
+      quantity: item.quantity,
+      price: item.price,
+      assigned_warehouse_id: warehouseInfo?.warehouse_id || null,
+      warehouse_name: warehouseInfo?.warehouse_name || null,
+    });
+
+    if (warehouseInfo) {
+      warehouseAssignments.push({
+        order_id: order.id,
+        product_id: item.product_id,
+        warehouse_id: warehouseInfo.warehouse_id,
+        quantity: item.quantity,
+        priority: warehouseInfo.priority,
+        fallback_level: warehouseInfo.fallback_level,
+      });
+    }
+  }
 
   const { error: itemsError } = await supabase
     .from("order_items")
@@ -133,10 +209,26 @@ export const placeOrder = async (req, res) => {
   if (itemsError)
     return res.status(500).json({ success: false, error: itemsError.message });
 
+  // Store warehouse assignments if any
+  if (warehouseAssignments.length > 0) {
+    const { error: assignmentError } = await supabase
+      .from("order_warehouse_assignments")
+      .insert(warehouseAssignments);
+
+    if (assignmentError) {
+      console.error("Error storing warehouse assignments:", assignmentError);
+      // Don't fail the order for this
+    }
+  }
+
   // Optional: clear user's cart (no response check here)
   await supabase.from("cart_items").delete().eq("user_id", user_id);
 
-  return res.json({ success: true, order });
+  return res.json({
+    success: true,
+    order,
+    warehouse_assignments: warehouseAssignments,
+  });
 };
 
 export const placeOrderWithDetailedAddress = async (req, res) => {
